@@ -53,12 +53,12 @@
  * from `0` and `1`. For example, if the user has pulled the refresher halfway
  * down, its progress would be `0.5`.
  * @param {string=} pulling-icon The icon to display while the user is pulling down.
- * Default: 'ion-arrow-down-c'.
- * @param {string=} pulling-text The text to display while the user is pulling down.
- * @param {string=} refreshing-icon The icon to display after user lets go of the
- * refresher.
- * @param {string=} refreshing-text The text to display after the user lets go of
- * the refresher.
+ * Default: 'ion-android-arrow-down'.
+ * @param {string=} spinner The {@link ionic.directive:ionSpinner} icon to display
+ * after user lets go of the refresher. The SVG {@link ionic.directive:ionSpinner}
+ * is now the default, replacing rotating font icons.
+ * @param {string=} refreshing-icon The font icon to display after user lets go of the
+ * refresher. This is depreicated in favor of the SVG {@link ionic.directive:ionSpinner}.
  * @param {boolean=} disable-pulling-rotation Disables the rotation animation of the pulling
  * icon when it reaches its activated threshold. To be used with a custom `pulling-icon`.
  *
@@ -77,44 +77,45 @@ IonicModule
           '<i class="icon {{pullingIcon}}"></i>' +
         '</div>' +
         '<div class="text-pulling" ng-bind-html="pullingText"></div>' +
-        '<div class="icon-refreshing"><i class="icon {{refreshingIcon}}"></i></div>' +
+        '<div class="icon-refreshing">' +
+          '<ion-spinner ng-if="showSpinner" icon="{{spinner}}"></ion-spinner>' +
+          '<i ng-if="!showSpinner" class="icon {{refreshingIcon}}"></i>' +
+        '</div>' +
         '<div class="text-refreshing" ng-bind-html="refreshingText"></div>' +
       '</div>' +
     '</div>',
-    compile: function($element, $attrs) {
+    link: function($scope, $element, $attrs, scrollCtrl) {
       if (angular.isUndefined($attrs.pullingIcon)) {
-        $attrs.$set('pullingIcon', 'ion-ios7-arrow-down');
+        $attrs.$set('pullingIcon', 'ion-android-arrow-down');
       }
-      if (angular.isUndefined($attrs.refreshingIcon)) {
-        $attrs.$set('refreshingIcon', 'ion-loading-d');
-      }
-      return function($scope, $element, $attrs, scrollCtrl) {
-        $ionicBind($scope, $attrs, {
-          pullingIcon: '@',
-          pullingText: '@',
-          refreshingIcon: '@',
-          refreshingText: '@',
-          disablePullingRotation: '@',
-          $onRefresh: '&onRefresh',
-          $onPulling: '&onPulling'
-        });
+      $scope.showSpinner = angular.isUndefined($attrs.refreshingIcon);
 
-        if (isDefined($attrs.onPullProgress)) {
-          var onPullProgressFn = $parse($attrs.onPullProgress);
-          $scope.$onPullProgress = function(progress) {
-            onPullProgressFn($scope, {
-              progress: progress
-            });
-          };
-        }
+      $ionicBind($scope, $attrs, {
+        pullingIcon: '@',
+        pullingText: '@',
+        refreshingIcon: '@',
+        refreshingText: '@',
+        spinner: '@',
+        disablePullingRotation: '@',
+        $onRefresh: '&onRefresh',
+        $onPulling: '&onPulling'
+      });
 
-        scrollCtrl._setRefresher($scope, $element[0]);
-        $scope.$on('scroll.refreshComplete', function() {
-          $scope.$evalAsync(function() {
-            scrollCtrl.scrollView.finishPullToRefresh();
+      if (isDefined($attrs.onPullProgress)) {
+        var onPullProgressFn = $parse($attrs.onPullProgress);
+        $scope.$onPullProgress = function(progress) {
+          onPullProgressFn($scope, {
+            progress: progress
           });
+        };
+      }
+
+      scrollCtrl._setRefresher($scope, $element[0]);
+      $scope.$on('scroll.refreshComplete', function() {
+        $scope.$evalAsync(function() {
+          scrollCtrl.scrollView.finishPullToRefresh();
         });
-      };
+      });
     }
   };
 }]);
