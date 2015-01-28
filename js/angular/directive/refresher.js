@@ -68,9 +68,10 @@ IonicModule
   return {
     restrict: 'E',
     replace: true,
-    require: '^$ionicScroll',
+    require: ['?^$ionicScroll', 'ionRefresher'],
+    controller: '$ionicRefresher',
     template:
-    '<div class="scroll-refresher" collection-repeat-ignore>' +
+    '<div class="scroll-refresher invisible" collection-repeat-ignore>' +
       '<div class="ionic-refresher-content" ' +
       'ng-class="{\'ionic-refresher-with-text\': pullingText || refreshingText}">' +
         '<div class="icon-pulling" ng-class="{\'pulling-rotation-disabled\':disablePullingRotation}">' +
@@ -84,38 +85,32 @@ IonicModule
         '<div class="text-refreshing" ng-bind-html="refreshingText"></div>' +
       '</div>' +
     '</div>',
-    link: function($scope, $element, $attrs, scrollCtrl) {
-      if (angular.isUndefined($attrs.pullingIcon)) {
-        $attrs.$set('pullingIcon', 'ion-android-arrow-down');
-      }
-      $scope.showSpinner = angular.isUndefined($attrs.refreshingIcon);
-
-      $ionicBind($scope, $attrs, {
-        pullingIcon: '@',
-        pullingText: '@',
-        refreshingIcon: '@',
-        refreshingText: '@',
-        spinner: '@',
-        disablePullingRotation: '@',
-        $onRefresh: '&onRefresh',
-        $onPulling: '&onPulling'
-      });
-
-      if (isDefined($attrs.onPullProgress)) {
-        var onPullProgressFn = $parse($attrs.onPullProgress);
-        $scope.$onPullProgress = function(progress) {
-          onPullProgressFn($scope, {
-            progress: progress
+    link: function($scope, $element, $attrs, ctrls) {
+      // JS Scrolling uses the scroll controller
+      var scrollCtrl = ctrls[0],
+          refresherCtrl = ctrls[1];
+      if (!!scrollCtrl) {
+        $element[0].classList.add('js-scrolling');
+        scrollCtrl._setRefresher(
+          $scope,
+          $element[0],
+          refresherCtrl.sharedMethods.activate,
+          refresherCtrl.sharedMethods.deactivate,
+          refresherCtrl.sharedMethods.start,
+          refresherCtrl.sharedMethods.show,
+          refresherCtrl.sharedMethods.hide,
+          refresherCtrl.sharedMethods.tail,
+          refresherCtrl.sharedMethods.onPullProgress
+        );
+        $scope.$on('scroll.refreshComplete', function() {
+          $scope.$evalAsync(function() {
+            scrollCtrl.scrollView.finishPullToRefresh();
           });
-        };
-      }
-
-      scrollCtrl._setRefresher($scope, $element[0]);
-      $scope.$on('scroll.refreshComplete', function() {
-        $scope.$evalAsync(function() {
-          scrollCtrl.scrollView.finishPullToRefresh();
         });
-      });
+      }else {
+        // Kick off native scrolling
+        refresherCtrl.init();
+      }
     }
   };
 }]);
