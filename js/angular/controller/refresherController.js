@@ -13,7 +13,9 @@ IonicModule
         lastOverscroll = 0,
         ptrThreshold = 60,
         activated = false,
-        scrollTime = 500;
+        scrollTime = 500,
+        startY = null,
+        deltaY = null;
 
     self.scrollParent = self.scrollChild = null;
 
@@ -43,69 +45,55 @@ IonicModule
     }
 
     function handleDragEnd() {
-      console.log('DRAG END')
-      if (!isDragging) return;
+      startY = null;
+      if (!isDragging) {
+        dragOffset = 0;
+        lastOverscroll = 0;
+        isOverscrolling = false;
+        setScrollLock(false);
+        return true;
+      }
       isDragging = false;
       dragOffset = 0;
       if (lastOverscroll > ptrThreshold) {
         self.sharedMethods.start();
         scrollTo(ptrThreshold, scrollTime);
-      } else {
+      }else {
         scrollTo(0, scrollTime, self.sharedMethods.deactivate);
-        $timeout(function(){
-          if (isOverscrolling) {
-            isOverscrolling = false;
-            setScrollLock(false);
-          }
-        }, scrollTime);
+        isOverscrolling = false;
       }
+      return true;
     }
 
     function handleDrag(e) {
-      console.log(
-        self.scrollParent.scrollTop,
-        parseInt(e.gesture.deltaY - dragOffset),
-        self.scrollChild.style['-webkit-transform'],
-        isOverscrolling,
-        isDragging,
-        activated,
-        self.scrollChild.classList.contains('overscroll')
-      )
-      //document.getElementById('test').innerHTML = self.scrollChild.style['-webkit-transform'];
-      if (e.gesture.deltaY - dragOffset < 0 || self.scrollParent.scrollTop != 0) {
-        // drag during normal scrolling, keep this light
-        // give control to native scrolling
+      if (e.touches.length > 1)return; //multi-touch gesture
+      if (startY === null) startY = parseInt(e.touches[0].screenY);
+      deltaY = parseInt(e.touches[0].screenY) - startY;
+
+      if (deltaY - dragOffset <= 0 || self.scrollParent.scrollTop !== 0) {
         if (isOverscrolling) {
           isOverscrolling = false;
           setScrollLock(false);
-console.log('gets here')
-            //self.scrollParent.scrollTop = parseInt(e.gesture.deltaY - dragOffset) * -1;
-
-          //nativescroll(self.scrollParent,100)
-          //lastOverscroll = parseInt(e.gesture.deltaY - dragOffset);
         }
-
+        if (isDragging) nativescroll(self.scrollParent,parseInt(deltaY - dragOffset) * -1);
         // this only needs to happen once and a DOM read is cheaper than a write
         if (self.scrollChild.style['-webkit-transform'] !== 'translateY(0px)') {
           overscroll(0);
         }
-        return;
-      }else if (e.gesture.deltaY > 0 && self.scrollParent.scrollTop === 0 && !isOverscrolling) {
+        return true;
+      }else if (deltaY > 0 && self.scrollParent.scrollTop === 0 && !isOverscrolling) {
         // starting overscroll, but drag started below scrollTop 0, so we need to offset the position
-        dragOffset = e.gesture.deltaY;
+        dragOffset = deltaY;
       }
+      e.preventDefault();
       if (!isOverscrolling) {
         isOverscrolling = true;
         setScrollLock(true);
       }
-      if (lastOverscroll > e.gesture.deltaY - dragOffset) {
-        // going backwards
-      }else {
-        // going forwards
-      }
+
       isDragging = true;
-      overscroll(parseInt(e.gesture.deltaY - dragOffset));
-      lastOverscroll = parseInt(e.gesture.deltaY - dragOffset);
+      overscroll(parseInt(deltaY - dragOffset));
+      lastOverscroll = parseInt(deltaY - dragOffset);
 
       if (!activated && lastOverscroll > ptrThreshold) {
         activated = true;
@@ -121,27 +109,26 @@ console.log('gets here')
       self.scrollChild.style['-webkit-transform'] = 'translateY(' + val + 'px)';
     }
 
-    function nativescroll(target,newScrollTop) {
+    function nativescroll(target, newScrollTop) {
       target.scrollTop = newScrollTop;
       var e = document.createEvent("UIEvents");
-      // creates a scroll event that bubbles, can be cancelled,
-      // and with its view and detail property initialized to window and 1,
-      // respectively
+      // creates a scroll event that bubbles, can be cancelled, and with its view
+      // and detail property initialized to window and 1, respectively
       e.initUIEvent("scroll", true, true, window, 1);
       target.dispatchEvent(e);
     }
 
     function setScrollLock(enabled) {
       if (enabled) {
+        ionic.requestAnimationFrame(function() {
           self.scrollChild.classList.add('overscroll');
-          //self.scrollChild.style.width = "100%";
-          //self.scrollChild.style.position = 'fixed';
           self.sharedMethods.show();
+        });
       } else {
+        ionic.requestAnimationFrame(function() {
           self.scrollChild.classList.remove('overscroll');
-          //self.scrollChild.style.width = "";
-          //self.scrollChild.style.position = '';
           self.sharedMethods.hide();
+        });
       }
     }
 
@@ -157,7 +144,8 @@ console.log('gets here')
             isOverscrolling = false;
             setScrollLock(false);
           }
-        },scrollTime * 2);
+          lastOverscroll = 0;
+        }, scrollTime);
       }, scrollTime);
     });
 
@@ -181,6 +169,10 @@ console.log('gets here')
         if (time < 1) ionic.requestAnimationFrame(scroll);
         else {
           lastOverscroll = Y;
+          if (Y < 5 && Y > -5) {
+            isOverscrolling = false;
+            setScrollLock(false);
+          }
           if (callback) callback();
         }
       }
@@ -191,8 +183,11 @@ console.log('gets here')
     self.init = function() {
       self.scrollParent = $element.parent().parent()[0];
       self.scrollChild = $element.parent()[0];
-      ionic.onGesture('drag', handleDrag, self.scrollChild);
-      ionic.onGesture('dragend', handleDragEnd, self.scrollChild);
+      ionic.on('touchmove', handleDrag, self.scrollChild);
+      ionic.on('touchend', handleDragEnd, self.scrollChild);
+      ionic.on('scroll', function(e) {
+        //console.log('scroll!',e);
+      }, self.scrollParent);
     };
 
     // DOM manipulation and broadcast methods shared by JS and Native Scrolling
@@ -237,31 +232,31 @@ console.log('gets here')
 
     var easing = {
       // no easing, no acceleration
-      linear: function (t) { return t },
+      linear: function (t) { return t; },
       // accelerating from zero velocity
-      easeInQuad: function (t) { return t*t },
+      easeInQuad: function (t) { return t*t; },
       // decelerating to zero velocity
-      easeOutQuad: function (t) { return t*(2-t) },
+      easeOutQuad: function (t) { return t*(2-t); },
       // acceleration until halfway, then deceleration
-      easeInOutQuad: function (t) { return t<.5 ? 2*t*t : -1+(4-2*t)*t },
+      easeInOutQuad: function (t) { return t<0.5 ? 2*t*t : -1+(4-2*t)*t; },
       // accelerating from zero velocity
-      easeInCubic: function (t) { return t*t*t },
+      easeInCubic: function (t) { return t*t*t; },
       // decelerating to zero velocity
-      easeOutCubic: function (t) { return (--t)*t*t+1 },
+      easeOutCubic: function (t) { return (--t)*t*t+1; },
       // acceleration until halfway, then deceleration
-      easeInOutCubic: function (t) { return t<.5 ? 4*t*t*t : (t-1)*(2*t-2)*(2*t-2)+1 },
+      easeInOutCubic: function (t) { return t<0.5 ? 4*t*t*t : (t-1)*(2*t-2)*(2*t-2)+1; },
       // accelerating from zero velocity
-      easeInQuart: function (t) { return t*t*t*t },
+      easeInQuart: function (t) { return t*t*t*t; },
       // decelerating to zero velocity
-      easeOutQuart: function (t) { return 1-(--t)*t*t*t },
+      easeOutQuart: function (t) { return 1-(--t)*t*t*t; },
       // acceleration until halfway, then deceleration
-      easeInOutQuart: function (t) { return t<.5 ? 8*t*t*t*t : 1-8*(--t)*t*t*t },
+      easeInOutQuart: function (t) { return t<0.5 ? 8*t*t*t*t : 1-8*(--t)*t*t*t; },
       // accelerating from zero velocity
-      easeInQuint: function (t) { return t*t*t*t*t },
+      easeInQuint: function (t) { return t*t*t*t*t; },
       // decelerating to zero velocity
-      easeOutQuint: function (t) { return 1+(--t)*t*t*t*t },
+      easeOutQuint: function (t) { return 1+(--t)*t*t*t*t; },
       // acceleration until halfway, then deceleration
-      easeInOutQuint: function (t) { return t<.5 ? 16*t*t*t*t*t : 1+16*(--t)*t*t*t*t }
+      easeInOutQuint: function (t) { return t<0.5 ? 16*t*t*t*t*t : 1+16*(--t)*t*t*t*t; }
     };
   }
 ]);
