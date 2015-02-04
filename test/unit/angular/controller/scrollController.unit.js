@@ -242,19 +242,46 @@ describe('$ionicScroll Controller', function() {
     expect(ctrl.scrollView.activatePullToRefresh).not.toHaveBeenCalled();
   });
 
-  it('should activatePullToRefresh and work when setRefresher', function() {
-    var startCb, refreshingCb, doneCb, refresherEl;
+  it('should activatePullToRefresh and work when setRefresher', inject(function($compile) {
+    var refresherEl,
+        activateCB,
+        deactivateCB,
+        startCB,
+        showCB,
+        hideCB,
+        tailCB,
+        onPullProgressCB;
     setup({
-      el: angular.element('<div><div class="scroll-refresher"></div></div>')[0]
+      el: angular.element('<div><ion-refresher class="refresher"></ion-refresher></div>')[0]
     });
-    spyOn(ctrl.scrollView, 'activatePullToRefresh').andCallFake(function(height, start, refreshing, done, show, hide) {
-      startCb = start;
-      refreshingCb = refreshing;
-      doneCb = done;
-      showCb = show;
-      hideCb = hide;
+
+    $compile(ctrl.element)(scope);
+    scope.$apply();
+
+    spyOn(ctrl.scrollView, 'activatePullToRefresh').andCallFake(function(height, start, done, refreshing,  show, hide, tail, onPull) {
+      activateCB = start;
+      deactivateCB = done;
+      startCB = refreshing;
+      showCB = show;
+      hideCB = hide;
+      tailCB = tail;
+      onPullProgressCB = onPull;
     });
-    ctrl._setRefresher(scope, ctrl.element);
+
+    var refresher = ctrl.refresher;
+    var refreshCtrl = angular.element(refresher).controller('ionRefresher');
+
+    ctrl._setRefresher(
+      scope,
+      ctrl.element,
+      refreshCtrl.sharedMethods.activate,
+      refreshCtrl.sharedMethods.deactivate,
+      refreshCtrl.sharedMethods.start,
+      refreshCtrl.sharedMethods.show,
+      refreshCtrl.sharedMethods.hide,
+      refreshCtrl.sharedMethods.tail,
+      refreshCtrl.sharedMethods.onPullProgress
+    );
 
     var scrollOnRefreshSpy = jasmine.createSpy('scroll.onRefresh');
 
@@ -262,31 +289,29 @@ describe('$ionicScroll Controller', function() {
     scope.$onPulling = jasmine.createSpy('onPulling');
 
     timeout.flush();
-    var refresher = ctrl.refresher;
 
     expect(refresher.classList.contains('active')).toBe(false);
     expect(refresher.classList.contains('refreshing')).toBe(false);
 
-    startCb();
+    refreshCtrl.sharedMethods.activate();
     expect(refresher.classList.contains('active')).toBe(true);
     expect(refresher.classList.contains('refreshing')).toBe(false);
     expect(scope.$onPulling).toHaveBeenCalled();
-
-    refreshingCb();
-    expect(refresher.classList.contains('refreshing')).toBe(false);
-
     expect(scope.$onRefresh).not.toHaveBeenCalled();
 
-    doneCb();
+    refreshCtrl.sharedMethods.start();
+    expect(refresher.classList.contains('refreshing')).toBe(true);
     expect(scope.$onRefresh).toHaveBeenCalled();
 
+    refreshCtrl.sharedMethods.deactivate();
+    timeout.flush();
     expect(refresher.classList.contains('active')).toBe(false);
 
-    showCb();
+    refreshCtrl.sharedMethods.show();
     expect(refresher.classList.contains('invisible')).toBe(false);
 
-    hideCb();
+    refreshCtrl.sharedMethods.hide();
     expect(refresher.classList.contains('invisible')).toBe(true);
-  });
+  }));
 
 });

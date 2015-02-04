@@ -180,25 +180,13 @@ function($scope,
   self._setRefresher = function(
     refresherScope,
     refresherElement,
-    activateCB,
-    deactivateCB,
-    startCB,
-    showCB,
-    hideCB,
-    tailCB,
-    onPullProgressCB
+    refresherMethods
   ) {
     self.refresher = refresherElement;
     var refresherHeight = self.refresher.clientHeight || 60;
     scrollView.activatePullToRefresh(
       refresherHeight,
-      activateCB,
-      deactivateCB,
-      startCB,
-      showCB,
-      hideCB,
-      tailCB,
-      onPullProgressCB
+      refresherMethods
     );
   };
 

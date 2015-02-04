@@ -15,14 +15,15 @@ IonicModule
         activated = false,
         scrollTime = 500,
         startY = null,
-        deltaY = null;
+        deltaY = null,
+        prefix = ionic.Platform.isAndroid() || ionic.Platform.isIOS() ? '-webkit-' : '';
 
     self.scrollParent = self.scrollChild = null;
 
-    if (angular.isUndefined($attrs.pullingIcon)) {
+    if (!isDefined($attrs.pullingIcon)) {
       $attrs.$set('pullingIcon', 'ion-android-arrow-down');
     }
-    $scope.showSpinner = angular.isUndefined($attrs.refreshingIcon);
+    $scope.showSpinner = !isDefined($attrs.refreshingIcon);
 
     $ionicBind($scope, $attrs, {
       pullingIcon: '@',
@@ -55,11 +56,13 @@ IonicModule
       }
       isDragging = false;
       dragOffset = 0;
+
       if (lastOverscroll > ptrThreshold) {
-        self.sharedMethods.start();
+        start();
         scrollTo(ptrThreshold, scrollTime);
-      }else {
-        scrollTo(0, scrollTime, self.sharedMethods.deactivate);
+
+      } else {
+        scrollTo(0, scrollTime, deactivate);
         isOverscrolling = false;
       }
       return true;
@@ -67,17 +70,17 @@ IonicModule
 
     function handleDrag(e) {
       if (e.touches.length > 1)return; //multi-touch gesture
-      if (startY === null) startY = parseInt(e.touches[0].screenY);
-      deltaY = parseInt(e.touches[0].screenY) - startY;
+      if (startY === null) startY = parseInt(e.touches[0].screenY, 10);
+      deltaY = parseInt(e.touches[0].screenY, 10) - startY;
 
       if (deltaY - dragOffset <= 0 || self.scrollParent.scrollTop !== 0) {
         if (isOverscrolling) {
           isOverscrolling = false;
           setScrollLock(false);
         }
-        if (isDragging) nativescroll(self.scrollParent,parseInt(deltaY - dragOffset) * -1);
+        if (isDragging) nativescroll(self.scrollParent,parseInt(deltaY - dragOffset, 10) * -1);
         // this only needs to happen once and a DOM read is cheaper than a write
-        if (self.scrollChild.style['-webkit-transform'] !== 'translateY(0px)') {
+        if (self.scrollChild.style[prefix + 'transform'] !== 'translateY(0px)') {
           overscroll(0);
         }
         return true;
@@ -92,21 +95,21 @@ IonicModule
       }
 
       isDragging = true;
-      overscroll(parseInt(deltaY - dragOffset));
-      lastOverscroll = parseInt(deltaY - dragOffset);
+      overscroll(parseInt(deltaY - dragOffset, 10));
+      lastOverscroll = parseInt(deltaY - dragOffset, 10);
 
       if (!activated && lastOverscroll > ptrThreshold) {
         activated = true;
-        ionic.requestAnimationFrame(self.sharedMethods.activate);
+        ionic.requestAnimationFrame(activate);
 
       } else if (activated && lastOverscroll < ptrThreshold) {
         activated = false;
-        ionic.requestAnimationFrame(self.sharedMethods.deactivate);
+        ionic.requestAnimationFrame(deactivate);
       }
     }
 
     function overscroll(val) {
-      self.scrollChild.style['-webkit-transform'] = 'translateY(' + val + 'px)';
+      self.scrollChild.style[prefix + 'transform'] = 'translateY(' + val + 'px)';
     }
 
     function nativescroll(target, newScrollTop) {
@@ -122,12 +125,12 @@ IonicModule
       if (enabled) {
         ionic.requestAnimationFrame(function() {
           self.scrollChild.classList.add('overscroll');
-          self.sharedMethods.show();
+          show();
         });
       } else {
         ionic.requestAnimationFrame(function() {
           self.scrollChild.classList.remove('overscroll');
-          self.sharedMethods.hide();
+          hide();
         });
       }
     }
@@ -135,9 +138,9 @@ IonicModule
     $scope.$on('scroll.refreshComplete', function() {
       // prevent the complete from firing before the scroll has started
       $timeout(function() {
-        ionic.requestAnimationFrame(self.sharedMethods.tail);
+        ionic.requestAnimationFrame(tail);
         // scroll back to home during tail animation
-        scrollTo(0, scrollTime, self.sharedMethods.deactivate);
+        scrollTo(0, scrollTime, deactivate);
         // return to native scrolling after tail animation has time to finish
         $timeout(function() {
           if (isOverscrolling) {
@@ -153,29 +156,43 @@ IonicModule
       // credit https://gist.github.com/dezinezync/5487119
       var start = Date.now(),
         from = lastOverscroll;
+
       if (from === Y) {
         callback();
         return; /* Prevent scrolling to the Y point if already there */
       }
+
       function min(a, b) {
         return a < b ? a : b;
       }
+
+      // decelerating to zero velocity
+      function easeOutCubic(t) {
+        return (--t) * t * t + 1;
+      }
+
       function scroll() {
         var currentTime = Date.now(),
           time = min(1, ((currentTime - start) / duration)),
           // where .5 would be 50% of time on a linear scale easedT gives a fraction based on the easing method
-          easedT = easing.easeOutCubic(time);
-        overscroll(parseInt((easedT * (Y - from)) + from));
-        if (time < 1) ionic.requestAnimationFrame(scroll);
-        else {
+          easedT = easeOutCubic(time);
+
+        overscroll(parseInt((easedT * (Y - from)) + from, 10));
+        if (time < 1) {
+          ionic.requestAnimationFrame(scroll);
+
+        } else {
           lastOverscroll = Y;
+
           if (Y < 5 && Y > -5) {
             isOverscrolling = false;
             setScrollLock(false);
           }
-          if (callback) callback();
+
+          callback && callback();
         }
       }
+
       ionic.requestAnimationFrame(scroll);
     }
 
@@ -183,80 +200,70 @@ IonicModule
     self.init = function() {
       self.scrollParent = $element.parent().parent()[0];
       self.scrollChild = $element.parent()[0];
+      if (!self.scrollParent.classList.contains('ionic-scroll') ||
+          !self.scrollChild.classList.contains('scroll')) {
+        throw new Error('Refresher must be immediate child of ion-content or ion-scroll');
+      }
       ionic.on('touchmove', handleDrag, self.scrollChild);
       ionic.on('touchend', handleDragEnd, self.scrollChild);
-      ionic.on('scroll', function(e) {
-        //console.log('scroll!',e);
-      }, self.scrollParent);
     };
 
     // DOM manipulation and broadcast methods shared by JS and Native Scrolling
-    self.sharedMethods = {
-      activate: function() {
-        $element[0].classList.add('active');
-        $scope.$onPulling();
-        self.sharedMethods.onPullProgress(1);
-      },
-      deactivate: function() {
-        // give tail 150ms to finish
-        $timeout(function() {
-          // deactivateCallback
-          $element[0].classList.remove('active');
-          $element[0].classList.remove('refreshing');
-          $element[0].classList.remove('refreshing-tail');
-          if (activated) activated = false;
-        },150);
-      },
-      start: function() {
-        // startCallback
-        $element[0].classList.add('refreshing');
-        $scope.$onRefresh();
-      },
-      show: function() {
-        // showCallback
-        $element[0].classList.remove('invisible');
-      },
-      hide: function() {
-        // showCallback
-        $element[0].classList.add('invisible');
-      },
-      tail: function() {
-        // tailCallback
-        $element[0].classList.add('refreshing-tail');
-      },
-      onPullProgress: function(progress) {
-        $scope.$broadcast('$ionicRefresher.pullProgress', progress);
-        $scope.$onPullProgress && $scope.$onPullProgress(progress);
-      }
+    // getter used by JS Scrolling
+    self.getRefresherDomMethods = function() {
+      return {
+        activate: activate,
+        deactivate: deactivate,
+        start: start,
+        show: show,
+        hide: hide,
+        tail: tail,
+        onPullProgress: onPullProgress
+      };
     };
 
-    var easing = {
-      // no easing, no acceleration
-      linear: function (t) { return t; },
-      // accelerating from zero velocity
-      easeInQuad: function (t) { return t*t; },
-      // decelerating to zero velocity
-      easeOutQuad: function (t) { return t*(2-t); },
-      // acceleration until halfway, then deceleration
-      easeInOutQuad: function (t) { return t<0.5 ? 2*t*t : -1+(4-2*t)*t; },
-      // accelerating from zero velocity
-      easeInCubic: function (t) { return t*t*t; },
-      // decelerating to zero velocity
-      easeOutCubic: function (t) { return (--t)*t*t+1; },
-      // acceleration until halfway, then deceleration
-      easeInOutCubic: function (t) { return t<0.5 ? 4*t*t*t : (t-1)*(2*t-2)*(2*t-2)+1; },
-      // accelerating from zero velocity
-      easeInQuart: function (t) { return t*t*t*t; },
-      // decelerating to zero velocity
-      easeOutQuart: function (t) { return 1-(--t)*t*t*t; },
-      // acceleration until halfway, then deceleration
-      easeInOutQuart: function (t) { return t<0.5 ? 8*t*t*t*t : 1-8*(--t)*t*t*t; },
-      // accelerating from zero velocity
-      easeInQuint: function (t) { return t*t*t*t*t; },
-      // decelerating to zero velocity
-      easeOutQuint: function (t) { return 1+(--t)*t*t*t*t; },
-      // acceleration until halfway, then deceleration
-      easeInOutQuint: function (t) { return t<0.5 ? 16*t*t*t*t*t : 1+16*(--t)*t*t*t*t; }
-    };
+    function activate() {
+      $element[0].classList.add('active');
+      $scope.$onPulling();
+      onPullProgress(1);
+    }
+
+    function deactivate() {
+      // give tail 150ms to finish
+      $timeout(function() {
+        // deactivateCallback
+        $element.removeClass('active refreshing refreshing-tail');
+        if (activated) activated = false;
+      }, 150);
+    }
+
+    function start() {
+      // startCallback
+      $element[0].classList.add('refreshing');
+      $scope.$onRefresh();
+    }
+
+    function show() {
+      // showCallback
+      $element[0].classList.remove('invisible');
+    }
+
+    function  hide() {
+      // showCallback
+      $element[0].classList.add('invisible');
+    }
+
+    function tail() {
+      // tailCallback
+      $element[0].classList.add('refreshing-tail');
+    }
+
+    function onPullProgress(progress) {
+      $scope.$broadcast('$ionicRefresher.pullProgress', progress);
+      $scope.$onPullProgress && $scope.$onPullProgress(progress);
+    }
+
+    // testing
+    self.__drag = handleDrag;
   }
 ]);

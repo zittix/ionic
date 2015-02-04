@@ -94,13 +94,7 @@ IonicModule
         scrollCtrl._setRefresher(
           $scope,
           $element[0],
-          refresherCtrl.sharedMethods.activate,
-          refresherCtrl.sharedMethods.deactivate,
-          refresherCtrl.sharedMethods.start,
-          refresherCtrl.sharedMethods.show,
-          refresherCtrl.sharedMethods.hide,
-          refresherCtrl.sharedMethods.tail,
-          refresherCtrl.sharedMethods.onPullProgress
+          refresherCtrl.getRefresherDomMethods()
         );
         $scope.$on('scroll.refreshComplete', function() {
           $scope.$evalAsync(function() {
