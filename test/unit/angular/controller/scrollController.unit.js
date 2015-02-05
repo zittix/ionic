@@ -270,17 +270,12 @@ describe('$ionicScroll Controller', function() {
 
     var refresher = ctrl.refresher;
     var refreshCtrl = angular.element(refresher).controller('ionRefresher');
+    var dm = refreshCtrl.getRefresherDomMethods()
 
     ctrl._setRefresher(
       scope,
       ctrl.element,
-      refreshCtrl.sharedMethods.activate,
-      refreshCtrl.sharedMethods.deactivate,
-      refreshCtrl.sharedMethods.start,
-      refreshCtrl.sharedMethods.show,
-      refreshCtrl.sharedMethods.hide,
-      refreshCtrl.sharedMethods.tail,
-      refreshCtrl.sharedMethods.onPullProgress
+      dm
     );
 
     var scrollOnRefreshSpy = jasmine.createSpy('scroll.onRefresh');
@@ -293,24 +288,24 @@ describe('$ionicScroll Controller', function() {
     expect(refresher.classList.contains('active')).toBe(false);
     expect(refresher.classList.contains('refreshing')).toBe(false);
 
-    refreshCtrl.sharedMethods.activate();
+    dm.activate();
     expect(refresher.classList.contains('active')).toBe(true);
     expect(refresher.classList.contains('refreshing')).toBe(false);
     expect(scope.$onPulling).toHaveBeenCalled();
     expect(scope.$onRefresh).not.toHaveBeenCalled();
 
-    refreshCtrl.sharedMethods.start();
+    dm.start();
     expect(refresher.classList.contains('refreshing')).toBe(true);
     expect(scope.$onRefresh).toHaveBeenCalled();
 
-    refreshCtrl.sharedMethods.deactivate();
+    dm.deactivate();
     timeout.flush();
     expect(refresher.classList.contains('active')).toBe(false);
 
-    refreshCtrl.sharedMethods.show();
+    dm.show();
     expect(refresher.classList.contains('invisible')).toBe(false);
 
-    refreshCtrl.sharedMethods.hide();
+    dm.hide();
     expect(refresher.classList.contains('invisible')).toBe(true);
   }));
 

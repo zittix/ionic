@@ -48,10 +48,6 @@
  * of the refresher.
  * @param {expression=} on-pulling Called when the user starts to pull down
  * on the refresher.
- * @param {expression=} on-pull-progress Repeatedly called as the user is pulling down
- * the refresher. The callback should have a `progress` argument which will be a number
- * from `0` and `1`. For example, if the user has pulled the refresher halfway
- * down, its progress would be `0.5`.
  * @param {string=} pulling-icon The icon to display while the user is pulling down.
  * Default: 'ion-android-arrow-down'.
  * @param {string=} spinner The {@link ionic.directive:ionSpinner} icon to display
@@ -64,7 +60,7 @@
  *
  */
 IonicModule
-.directive('ionRefresher', ['$ionicBind', '$parse', function($ionicBind, $parse) {
+.directive('ionRefresher', [function() {
   return {
     restrict: 'E',
     replace: true,
@@ -86,25 +82,31 @@ IonicModule
       '</div>' +
     '</div>',
     link: function($scope, $element, $attrs, ctrls) {
+
       // JS Scrolling uses the scroll controller
       var scrollCtrl = ctrls[0],
           refresherCtrl = ctrls[1];
+
       if (!!scrollCtrl) {
         $element[0].classList.add('js-scrolling');
+
         scrollCtrl._setRefresher(
           $scope,
           $element[0],
           refresherCtrl.getRefresherDomMethods()
         );
+
         $scope.$on('scroll.refreshComplete', function() {
           $scope.$evalAsync(function() {
             scrollCtrl.scrollView.finishPullToRefresh();
           });
         });
-      }else {
+
+      } else {
         // Kick off native scrolling
         refresherCtrl.init();
       }
+
     }
   };
 }]);

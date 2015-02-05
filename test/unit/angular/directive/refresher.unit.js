@@ -57,10 +57,8 @@ describe('ionRefresher directive', function() {
   it('should setRefresher on scrollCtrl', function() {
     var el = setup();
     expect(el.controller('$ionicScroll')._setRefresher.callCount).toBe(1);
-    var sm = el.refresherCtrl.sharedMethods;
     expect(el.controller('$ionicScroll')._setRefresher).toHaveBeenCalledWith(
-      el.scope(), el[0], sm.activate, sm.deactivate, sm.start, sm.show,
-      sm.hide, sm.tail, sm.onPullProgress
+      el.scope(), el[0], el.refresherCtrl.getRefresherDomMethods()
     );
   });
 

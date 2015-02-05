@@ -22,7 +22,7 @@ describe('$ionicRefresh Controller', function() {
       scope.$apply();
       scope.$onRefresh = jasmine.createSpy('onRefresh');
       scope.$onPulling = jasmine.createSpy('onPulling');
-      refresher = scrollEl.find('.scroll-refresher')[0]
+      refresher = scrollEl.find('.scroll-refresher')[0];
       ctrl = angular.element(refresher).controller('ionRefresher');
       timeout = $timeout;
     });
@@ -43,48 +43,50 @@ describe('$ionicRefresh Controller', function() {
 
   it('should oversroll using CSS transforms', function() {
     setup();
-    spyOn(ctrl.sharedMethods, 'show');
 
-    ctrl.__drag(evt(0));
-    ctrl.__drag(evt(10));
-    ctrl.__drag(evt(20));
-    expect(ctrl.scrollChild.style.transform).toBe('translateY(10px)');
-    expect(ctrl.scrollChild.classList.contains('overscroll')).toBe(true);
-    expect(ctrl.sharedMethods.show).toHaveBeenCalled();
+    ctrl.__handleTouchmove(evt(0));
+    ctrl.__handleTouchmove(evt(10));
+    ctrl.__handleTouchmove(evt(20));
+    expect(ctrl.__getScrollChild().style[ionic.CSS.TRANSFORM]).toBe('translateY(10px)');
+    expect(ctrl.__getScrollChild().classList.contains('overscroll')).toBe(true);
+    expect(refresher.classList.contains('invisible')).toBe(false);
   });
 
   it('should resume native scrolling when overscroll is done', function() {
     setup();
-    spyOn(ctrl.sharedMethods, 'show');
-    spyOn(ctrl.sharedMethods, 'hide');
+    var domMethods = ctrl.getRefresherDomMethods();
+    spyOn(domMethods, 'activate');
+    spyOn(domMethods, 'deactivate');
 
-    ctrl.__drag(evt(0));
-    ctrl.__drag(evt(10));
-    ctrl.__drag(evt(0));
-    expect(ctrl.scrollChild.style.transform).toBe('translateY(0px)');
-    expect(ctrl.scrollChild.classList.contains('overscroll')).toBe(false);
-    expect(ctrl.sharedMethods.show).toHaveBeenCalled();
-    expect(ctrl.sharedMethods.hide).toHaveBeenCalled();
+    ctrl.__handleTouchmove(evt(0));
+    ctrl.__handleTouchmove(evt(10));
+    expect(refresher.classList.contains('invisible')).toBe(false);
+    ctrl.__handleTouchmove(evt(0));
+    expect(ctrl.__getScrollChild().style[ionic.CSS.TRANSFORM]).toBe('translateY(0px)');
+    expect(ctrl.__getScrollChild().classList.contains('overscroll')).toBe(false);
+    expect(refresher.classList.contains('invisible')).toBe(true);
   });
 
   it('should activate and deactivate when dragging past activation threshold', function() {
     setup();
-    spyOn(ctrl.sharedMethods, 'activate');
-    spyOn(ctrl.sharedMethods, 'deactivate');
+    var domMethods = ctrl.getRefresherDomMethods();
+    spyOn(domMethods, 'activate');
+    spyOn(domMethods, 'deactivate');
 
-    ctrl.__drag(evt(0));
-    ctrl.__drag(evt(10));
-    ctrl.__drag(evt(100));
-    expect(ctrl.scrollChild.style.transform).toBe('translateY(90px)');
-    expect(ctrl.scrollChild.classList.contains('overscroll')).toBe(true);
-    expect(ctrl.sharedMethods.activate).toHaveBeenCalled();
-    expect(ctrl.sharedMethods.deactivate).not.toHaveBeenCalled();
+    ctrl.__handleTouchmove(evt(0));
+    ctrl.__handleTouchmove(evt(10));
+    ctrl.__handleTouchmove(evt(100));
+    expect(ctrl.__getScrollChild().style[ionic.CSS.TRANSFORM]).toBe('translateY(90px)');
+    expect(ctrl.__getScrollChild().classList.contains('overscroll')).toBe(true);
+    expect(refresher.classList.contains('invisible')).toBe(false);
+    expect(refresher.classList.contains('active')).toBe(true);
 
-    ctrl.__drag(evt(0));
-    timeout.flush()
-    expect(ctrl.scrollChild.style.transform).toBe('translateY(0px)');
-    expect(ctrl.scrollChild.classList.contains('overscroll')).toBe(false);
-    //expect(ctrl.sharedMethods.deactivate).toHaveBeenCalled();
+    ctrl.__handleTouchmove(evt(0));
+    timeout.flush();
+    expect(ctrl.__getScrollChild().style[ionic.CSS.TRANSFORM]).toBe('translateY(0px)');
+    expect(ctrl.__getScrollChild().classList.contains('overscroll')).toBe(false);
+    expect(refresher.classList.contains('invisible')).toBe(true);
+    expect(refresher.classList.contains('active')).toBe(false);
   });
 
   it('should update refresher class when shared methods fire', function() {
@@ -93,38 +95,35 @@ describe('$ionicRefresh Controller', function() {
     scope.$onRefresh = jasmine.createSpy('onRefresh');
     scope.$onPulling = jasmine.createSpy('onPulling');
 
-    spyOn(ctrl.sharedMethods, 'onPullProgress');
 
     expect(refresher.classList.contains('active')).toBe(false);
     expect(refresher.classList.contains('refreshing')).toBe(false);
     expect(refresher.classList.contains('invisible')).toBe(true);
-    expect(ctrl.sharedMethods.onPullProgress).not.toHaveBeenCalled();
     expect(scope.$onRefresh).not.toHaveBeenCalled();
     expect(scope.$onPulling).not.toHaveBeenCalled();
 
-    ctrl.sharedMethods.show();
+    ctrl.getRefresherDomMethods().show();
     expect(refresher.classList.contains('invisible')).toBe(false);
 
-    ctrl.sharedMethods.activate();
+    ctrl.getRefresherDomMethods().activate();
     expect(refresher.classList.contains('active')).toBe(true);
     expect(refresher.classList.contains('refreshing')).toBe(false);
     expect(scope.$onPulling).toHaveBeenCalled();
-    expect(ctrl.sharedMethods.onPullProgress).toHaveBeenCalledWith(1);
 
-    ctrl.sharedMethods.start();
+    ctrl.getRefresherDomMethods().start();
     expect(refresher.classList.contains('refreshing')).toBe(true);
     expect(scope.$onRefresh).toHaveBeenCalled();
 
-    ctrl.sharedMethods.tail();
+    ctrl.getRefresherDomMethods().tail();
     expect(refresher.classList.contains('refreshing-tail')).toBe(true);
 
-    ctrl.sharedMethods.deactivate();
+    ctrl.getRefresherDomMethods().deactivate();
     timeout.flush();
     expect(refresher.classList.contains('active')).toBe(false);
     expect(refresher.classList.contains('refreshing')).toBe(false);
     expect(refresher.classList.contains('refreshing-tail')).toBe(false);
 
-    ctrl.sharedMethods.hide();
+    ctrl.getRefresherDomMethods().hide();
     expect(refresher.classList.contains('invisible')).toBe(true);
   });
 });

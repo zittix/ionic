@@ -532,9 +532,6 @@ ionic.views.Scroll = ionic.views.View.inherit({
   /** Callback to execute to start the actual refresh. Call {@link #refreshFinish} when done */
   __refreshStart: null,
 
-  /** Callback to state the progress while pulling to refresh */
-  __refreshPullProgress: null,
-
   /** Zoom level */
   __zoomLevel: 1,
 
@@ -1351,7 +1348,6 @@ ionic.views.Scroll = ionic.views.View.inherit({
     self.__refreshShow = function() {ionic.requestAnimationFrame(refresherMethods.show);};
     self.__refreshHide = function() {ionic.requestAnimationFrame(refresherMethods.hide);};
     self.__refreshTail = function() {ionic.requestAnimationFrame(refresherMethods.tail);};
-    self.__refreshPullProgress = refresherMethods.pullProgress;
     self.__refreshTailTime = 100;
     self.__minSpinTime = 600;
   },
@@ -1843,9 +1839,6 @@ ionic.views.Scroll = ionic.views.View.inherit({
                 if (self.__refreshDeactivate) {
                   self.__refreshDeactivate();
                 }
-
-              } else if (!self.__refreshActive && self.__refreshPullProgress) {
-                self.__refreshPullProgress(scrollTop / -self.__refreshHeight);
 
               }
             }
