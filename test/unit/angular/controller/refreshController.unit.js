@@ -47,7 +47,7 @@ describe('$ionicRefresh Controller', function() {
     ctrl.__handleTouchmove(evt(0));
     ctrl.__handleTouchmove(evt(10));
     ctrl.__handleTouchmove(evt(20));
-    expect(ctrl.__getScrollChild().style[ionic.CSS.TRANSFORM]).toBe('translateY(10px)');
+    expect(ctrl.__getScrollChild().style[ionic.CSS.TRANSFORM]).toBe('translateY(3px)');
     expect(ctrl.__getScrollChild().classList.contains('overscroll')).toBe(true);
     expect(refresher.classList.contains('invisible')).toBe(false);
   });
@@ -75,8 +75,8 @@ describe('$ionicRefresh Controller', function() {
 
     ctrl.__handleTouchmove(evt(0));
     ctrl.__handleTouchmove(evt(10));
-    ctrl.__handleTouchmove(evt(100));
-    expect(ctrl.__getScrollChild().style[ionic.CSS.TRANSFORM]).toBe('translateY(90px)');
+    ctrl.__handleTouchmove(evt(300));
+    expect(ctrl.__getScrollChild().style[ionic.CSS.TRANSFORM]).toBe('translateY(96px)');
     expect(ctrl.__getScrollChild().classList.contains('overscroll')).toBe(true);
     expect(refresher.classList.contains('invisible')).toBe(false);
     expect(refresher.classList.contains('active')).toBe(true);
@@ -125,5 +125,17 @@ describe('$ionicRefresh Controller', function() {
 
     ctrl.getRefresherDomMethods().hide();
     expect(refresher.classList.contains('invisible')).toBe(true);
+  });
+
+  it('should cleanup when done', function() {
+    setup();
+
+    expect(ctrl.__getScrollChild()).not.toBe(null);
+    expect(ctrl.__getScrollParent()).not.toBe(null);
+
+    scope.$broadcast('$destroy');
+
+    expect(ctrl.__getScrollChild()).toBe(null);
+    expect(ctrl.__getScrollParent()).toBe(null);
   });
 });

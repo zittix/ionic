@@ -24,7 +24,9 @@ IonicModule
       $attrs.$set('pullingIcon', 'ion-android-arrow-down');
     }
 
-    $scope.showSpinner = !isDefined($attrs.refreshingIcon);
+    $scope.showSpinner = !isDefined($attrs.refreshingIcon) && $attrs.spinner != 'none';
+
+    $scope.showIcon = isDefined($attrs.refreshingIcon);
 
     $ionicBind($scope, $attrs, {
       pullingIcon: '@',
@@ -115,7 +117,7 @@ IonicModule
 
       isDragging = true;
       // overscroll according to the user's drag so far
-      overscroll(parseInt(deltaY - dragOffset, 10));
+      overscroll(parseInt((deltaY - dragOffset) / 3, 10));
 
       // update the icon accordingly
       if (!activated && lastOverscroll > ptrThreshold) {
@@ -244,14 +246,14 @@ IonicModule
       ionic.on('touchmove', handleTouchmove, scrollChild);
       ionic.on('touchend', handleTouchend, scrollChild);
       ionic.on('scroll', handleScroll, scrollParent);
+
+      // cleanup when done
+      $scope.$on('$destroy', destroy);
     };
 
-
-    $scope.$on('$destroy', destroy);
-
     function destroy() {
-      ionic.off('dragdown', handleTouchmove, scrollChild);
-      ionic.off('dragend', handleTouchend, scrollChild);
+      ionic.off('touchmove', handleTouchmove, scrollChild);
+      ionic.off('touchend', handleTouchend, scrollChild);
       ionic.off('scroll', handleScroll, scrollParent);
       scrollParent = null;
       scrollChild = null;
