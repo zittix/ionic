@@ -1,12 +1,21 @@
 (function(ionic) {
   var NOOP = function() {};
+  ionic.views.ScrollNative = ionic.views.View.inherit({
 
-  ionic.views.Scroll = ionic.views.View.inherit({
     initialize: function(options) {
       var self = this;
 
       self.__container = self.el = options.el;
       self.__content = options.el.firstElementChild;
+      self.isNative = true;
+
+      // TODO: turn in to methods
+      self.__scrollTop = self.el.scrollTop;
+      self.__scrollLeft = self.el.scrollLeft;
+      self.__clientHeight = self.__content.clientHeight,
+      self.__clientWidth = self.__content.clientWidth,
+      self.__maxScrollTop = Math.max((self.__contentHeight) - self.__clientHeight, 0),
+      self.__maxScrollLeft = Math.max((self.__contentWidth) - self.__clientWidth, 0),
 
       self.options = {
 
@@ -17,7 +26,7 @@
         scrollingY: true,
 
         /** Bouncing (content can be slowly moved outside and jumps back after releasing) */
-        bouncing: ionic.platform.isIOS(),
+        bouncing: ionic.Platform.isIOS(),
 
         deceleration: null,
 
@@ -32,6 +41,10 @@
         }
 
       };
+
+      for (var key in options) {
+        self.options[key] = options[key];
+      }
 
       self.onScroll = function() {
         // this is run every scroll event, so keep it light
@@ -76,18 +89,13 @@
       );
     },
 
-    // TODO: turn in to methods
-    __scrollTop: el.scrollTop,
-    __scrollLeft: el.scrollLeft,
-    __clientHeight: self.__content.clientHeight,
-    __clientWidth: self.__content.clientWidth,
-    __maxScrollTop: Math.max((self.__contentHeight) - self.__clientHeight, 0),
-    __maxScrollLeft: Math.max((self.__contentWidth) - self.__clientWidth, 0),
+
 
     run: function() {
       // should be noop, but keeping this for future proofing
       this.resize();
     },
+
     /**
      * Returns the scroll position and zooming values
      *
@@ -100,6 +108,67 @@
         zoom: 1
       };
     },
+
+    /**
+     * Configures the dimensions of the client (outer) and content (inner) elements.
+     * Requires the available space for the outer element and the outer size of the inner element.
+     * All values which are falsy (null or zero etc.) are ignored and the old value is kept.
+     *
+     * @param clientWidth {Integer} Inner width of outer element
+     * @param clientHeight {Integer} Inner height of outer element
+     * @param contentWidth {Integer} Outer width of inner element
+     * @param contentHeight {Integer} Outer height of inner element
+     */
+    setDimensions: function(clientWidth, clientHeight, contentWidth, contentHeight, continueScrolling) {
+      var self = this;
+
+      if (!clientWidth && !clientHeight && !contentWidth && !contentHeight) {
+        // this scrollview isn't rendered, don't bother
+        return;
+      }
+
+      // Only update values which are defined
+      if (clientWidth === +clientWidth) {
+        self.__clientWidth = clientWidth;
+      }
+
+      if (clientHeight === +clientHeight) {
+        self.__clientHeight = clientHeight;
+      }
+
+      if (contentWidth === +contentWidth) {
+        self.__contentWidth = contentWidth;
+      }
+
+      if (contentHeight === +contentHeight) {
+        self.__contentHeight = contentHeight;
+      }
+
+      // Refresh maximums
+      self.__computeScrollMax();
+
+      // Refresh scroll position
+      if (!continueScrolling) {
+        self.scrollTo(self.__scrollLeft, self.__scrollTop, true, null, true);
+      }
+
+    },
+
+    /**
+     * Recomputes scroll minimum values based on client dimensions and content dimensions.
+     */
+    __computeScrollMax: function() {
+      var self = this;
+
+      self.__maxScrollLeft = Math.max((self.__contentWidth) - self.__clientWidth, 0);
+      self.__maxScrollTop = Math.max((self.__contentHeight) - self.__clientHeight, 0);
+
+      if (!self.__didWaitForSize && !self.__maxScrollLeft && !self.__maxScrollTop) {
+        self.__didWaitForSize = true;
+        self.__waitForSize();
+      }
+    },
+
     /**
      * Returns the maximum scroll values
      *
@@ -111,6 +180,23 @@
         top: this.__maxScrollTop
       };
     },
+
+    /**
+     * If the scroll view isn't sized correctly on start, wait until we have at least some size
+     */
+    __waitForSize: function() {
+      var self = this;
+
+      clearTimeout(self.__sizerTimeout);
+
+      var sizer = function() {
+        self.resize(true);
+      };
+
+      sizer();
+      self.__sizerTimeout = setTimeout(sizer, 500);
+    },
+
     scrollBy: function(left, top, animate) {
       var self = this;
 
@@ -119,6 +205,7 @@
 
       self.scrollTo(startLeft + (left || 0), startTop + (top || 0), animate);
     },
+
     /**
      * Scrolls to the given position. Respect limitations and snapping automatically.
      *
@@ -128,8 +215,11 @@
      */
     scrollTo: function(left, top, animate) {
       //TODO add animate functionality
-      self.__container.scrollTop = top;
-      self.__container.scrollLeft = left;
+      var self = this;
+      console.log(self)
+
+      self.el.scrollTop = top;
+      self.el.scrollLeft = left;
     }
 });
 
