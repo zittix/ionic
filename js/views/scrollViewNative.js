@@ -69,7 +69,6 @@
     // Not Used in native scrolling, but called by other Ionic components
 
     __callback: NOOP,
-    __cleanup: NOOP,
     zoomTo: NOOP,
     zoomBy: NOOP,
     activatePullToRefresh: NOOP,
@@ -216,12 +215,62 @@
     scrollTo: function(left, top, animate) {
       //TODO add animate functionality
       var self = this;
-      console.log(self)
 
       self.el.scrollTop = top;
       self.el.scrollLeft = left;
+    },
+
+    onScroll: function() {
+
+      if (!ionic.scroll.isScrolling) {
+        setTimeout(self.setScrollStart, 50);
+      } else {
+        clearTimeout(self.scrollTimer);
+        self.scrollTimer = setTimeout(self.setScrollStop, 80);
+      }
+
+    },
+
+    resetScrollView: function(e) {
+      //return scrollview to original height once keyboard has hidden
+      if (self.isScrolledIntoView) {
+        self.isScrolledIntoView = false;
+        container.style.height = "";
+        container.style.overflow = "";
+        self.resize();
+        ionic.scroll.isScrolling = false;
+      }
+    },
+
+    __initEventHandlers: function() {
+      var self = this;
+
+      // Event Handler
+      var container = self.__container;
+
+      container.addEventListener('resetScrollView', self.resetScrollView);
+      container.addEventListener('scroll', self.onScroll);
+    },
+
+    __cleanup: function() {
+      var self = this;
+      var container = self.__container;
+
+      container.removeEventListener('resetScrollView', self.resetScrollView);
+      container.removeEventListener('scroll', self.onScroll);
+
+      ionic.tap.removeClonedInputs(container, self);
+
+      delete self.__container;
+      delete self.__content;
+      delete self.__indicatorX;
+      delete self.__indicatorY;
+      delete self.options.el;
+
+      self.resize = self.scrollTo = self.onScroll = self.resetScrollView = NOOP;
+      container = null;
     }
-});
+  });
 
 })(ionic);
 
