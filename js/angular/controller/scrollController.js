@@ -12,7 +12,6 @@ IonicModule
   '$document',
   '$ionicScrollDelegate',
   '$ionicHistory',
-  '$controller',
 function($scope,
          scrollViewOptions,
          $timeout,
@@ -20,8 +19,7 @@ function($scope,
          $location,
          $document,
          $ionicScrollDelegate,
-         $ionicHistory,
-         $controller) {
+         $ionicHistory) {
 
   var self = this;
   // for testing
@@ -94,7 +92,6 @@ function($scope,
 
   $timeout(function() {
     scrollView && scrollView.run && scrollView.run();
-    $element.triggerHandler('scroll.init');
   });
 
   self.getScrollView = function() {

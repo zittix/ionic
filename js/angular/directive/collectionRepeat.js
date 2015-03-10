@@ -18,7 +18,7 @@
  *
  * - The data given to collection-repeat must be an array.
  * - If the `item-height` and `item-width` attributes are not supplied, it will be assumed that
- *   every item in the list's dimensions are the same as the first item's dimensions.
+ *   every item in the list has the same dimensions as the first item.
  * - Don't use angular one-time binding (`::`) with collection-repeat. The scope of each item is
  *   assigned new data and re-digested as you scroll. Bindings need to update, and one-time bindings
  *   won't.
@@ -27,7 +27,7 @@
  *
  * - The iOS webview has a performance bottleneck when switching out `<img src>` attributes.
  *   To increase performance of images on iOS, cache your images in advance and,
- *   if possible, lower the number of unique images. Check out [this codepen]().
+ *   if possible, lower the number of unique images. We're working on [a solution](https://github.com/driftyco/ionic/issues/3194).
  *
  * @usage
  * #### Basic Item List ([codepen](http://codepen.io/ionic/pen/0c2c35a34a8b18ad4d793fef0b081693))
@@ -39,7 +39,7 @@
  * </ion-content>
  * ```
  *
- * #### Grid of Images ([codepen])
+ * #### Grid of Images ([codepen](http://codepen.io/ionic/pen/5515d4efd9d66f780e96787387f41664))
  * ```html
  * <ion-content>
  *   <img collection-repeat="photo in photos"
@@ -49,12 +49,16 @@
  * </ion-content>
  * ```
  *
- * #### Horizontal Scroller, Dynamic Item Width (codepen)
+ * #### Horizontal Scroller, Dynamic Item Width ([codepen](http://codepen.io/ionic/pen/67cc56b349124a349acb57a0740e030e))
  * ```html
- * <ion-content direction="x">
- *   <img collection-repeat="photo in photos"
- *     item-width="getWidth(photo)"
- *     item-height="100%">
+ * <ion-content>
+ *   <h2>Available Kittens:</h2>
+ *   <ion-scroll direction="x" class="available-scroller">
+ *     <div class="photo" collection-repeat="photo in main.photos"
+ *        item-height="250" item-width="photo.width + 30">
+ *        <img ng-src="{{photo.src}}">
+ *     </div>
+ *   </ion-scroll>
  * </ion-content>
  * ```
  *
@@ -64,10 +68,13 @@
  *   For example: `album in artist.albums` or `album in artist.albums | orderBy:'name'`.
  * @param {expression=} item-width The width of the repeated element. The expression must return
  *   a number (pixels) or a percentage. Defaults to the width of the first item in the list.
+ *   (previously named collection-item-width)
  * @param {expression=} item-height The height of the repeated element. The expression must return
  *   a number (pixels) or a percentage. Defaults to the height of the first item in the list.
+ *   (previously named collection-item-height)
  * @param {number=} item-render-buffer The number of items to load before and after the visible
- *   items in the list. Default 10. This is good to set higher if you have lots of images to preload.
+ *   items in the list. Default 3. Tip: set this higher if you have lots of images to preload, but
+ *   don't set it too high or you'll see performance loss.
  * @param {boolean=} force-refresh-images Force images to refresh as you scroll. This fixes a problem
  *   where, when an element is interchanged as scrolling, its image will still have the old src
  *   while the new src loads. Setting this to true comes with a small performance loss.
@@ -79,16 +86,16 @@ IonicModule
 
 var ONE_PX_TRANSPARENT_IMG_SRC = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 var WIDTH_HEIGHT_REGEX = /height:.*?px;\s*width:.*?px/;
-var DEFAULT_RENDER_BUFFER = 10;
+var DEFAULT_RENDER_BUFFER = 3;
 
-CollectionRepeatDirective.$inject = ['$ionicCollectionManager', '$parse', '$window', '$$rAF'];
-function CollectionRepeatDirective($ionicCollectionManager, $parse, $window, $$rAF) {
+CollectionRepeatDirective.$inject = ['$ionicCollectionManager', '$parse', '$window', '$$rAF', '$rootScope', '$timeout'];
+function CollectionRepeatDirective($ionicCollectionManager, $parse, $window, $$rAF, $rootScope, $timeout) {
   return {
     restrict: 'A',
     priority: 1000,
     transclude: 'element',
     $$tlb: true,
-    require: '^$ionicScroll',
+    require: '^^$ionicScroll',
     link: postLink
   };
 
@@ -103,16 +110,19 @@ function CollectionRepeatDirective($ionicCollectionManager, $parse, $window, $$r
                       "an xy scrollView.");
     }
 
-    var match = attr.collectionRepeat.match(/^\s*([\s\S]+?)\s+in\s+([\s\S]+?)(?:\s+track\s+by\s+([\s\S]+?))?\s*$/);
+    var repeatExpr = attr.collectionRepeat;
+    var match = repeatExpr.match(/^\s*([\s\S]+?)\s+in\s+([\s\S]+?)(?:\s+track\s+by\s+([\s\S]+?))?\s*$/);
     if (!match) {
       throw new Error("collection-repeat expected expression in form of '_item_ in " +
                       "_collection_[ track by _id_]' but got '" + attr.collectionRepeat + "'.");
     }
     var keyExpr = match[1];
     var listExpr = match[2];
+    var listGetter = $parse(listExpr);
     var heightData = {};
     var widthData = {};
     var computedStyleDimensions = {};
+    var data = [];
     var repeatManager;
 
     // attr.collectionBufferSize is deprecated
@@ -126,62 +136,33 @@ function CollectionRepeatDirective($ionicCollectionManager, $parse, $window, $$r
     // attr.collectionItemWidth is deprecated
     var widthExpr = attr.itemWidth || attr.collectionItemWidth;
 
-    //Height and width have four 'modes':
-    //1) Computed Mode
-    //  - Nothing is supplied, so we getComputedStyle() on one element in the list and use
-    //    that width and height value for the width and height of every item. This is re-computed
-    //    every resize.
-    //2) Constant Mode, Static Integer
-    //  - The user provides a constant number for width or height, in pixels. We parse it,
-    //    store it on the `value` field, and it never changes
-    //3) Constant Mode, Percent
-    //  - The user provides a percent string for width or height. The getter for percent is
-    //    stored on the `getValue()` field, and is re-evaluated once every resize. The result
-    //    is stored on the `value` field.
-    //4) Dynamic Mode
-    //  - The user provides a dynamic expression for the width or height.  This is re-evaluated
-    //    for every item, stored on the `.getValue()` field.
-    if (!heightExpr && !widthExpr) {
-      heightData.computed = widthData.computed = true;
-    } else {
-      if (heightExpr) {
-        parseDimensionAttr(heightExpr, heightData);
-      } else {
-        heightData.computed = true;
-      }
-      if (!widthExpr) widthExpr = '"100%"';
-      parseDimensionAttr(widthExpr, widthData);
-    }
+    var afterItemsContainer = initAfterItemsContainer();
 
-    var afterItemsContainer = angular.element(
-      scrollView.__content.querySelector('.collection-repeat-after-container')
-    );
-    if (!afterItemsContainer.length) {
-      var elementIsAfterRepeater = false;
-      var afterNodes = [].filter.call(scrollView.__content.childNodes, function(node) {
-        if (node.contains(containerNode)) {
-          elementIsAfterRepeater = true;
-          return false;
-        }
-        return elementIsAfterRepeater;
+    initDimensions();
+
+    var debouncedRefreshDimensions = ionic.animationFrameThrottle(refreshDimensions);
+    var debouncedOnResize = ionic.animationFrameThrottle(validateResize);
+
+    // Dimensions are refreshed on resize or data change.
+    angular.element($window).on('resize', debouncedOnResize);
+    $timeout(refreshDimensions, 0, false);
+
+    scope.$watchCollection(listGetter, function(newValue) {
+      data = newValue || (newValue = []);
+      if (!angular.isArray(newValue)) {
+        throw new Error("collection-repeat expected an array for '" + listExpr + "', " +
+          "but got a " + typeof value);
+      }
+
+      // Wait for this digest to end before refreshing everything.
+      scope.$$postDigest(function() {
+        getRepeatManager().refreshData(newValue);
+        refreshDimensions();
       });
-      afterItemsContainer = angular.element('<span class="collection-repeat-after-container">');
-      if (scrollView.options.scrollingX) {
-        afterItemsContainer.addClass('horizontal');
-      }
-      afterItemsContainer.append(afterNodes);
-      scrollView.__content.appendChild(afterItemsContainer[0]);
-    }
-
-    $$rAF(refreshDimensions);
-    scrollCtrl.$element.one('scroll.init', refreshDimensions);
-
-    var onWindowResize = ionic.animationFrameThrottle(validateResize);
-    angular.element($window).on('resize', onWindowResize);
+    });
 
     scope.$on('$destroy', function() {
-      angular.element($window).off('resize', onWindowResize);
-      scrollCtrl.$element && scrollCtrl.$element.off('scroll.init', refreshDimensions);
+      angular.element($window).off('resize', debouncedOnResize);
 
       computedStyleNode && computedStyleNode.parentNode &&
         computedStyleNode.parentNode.removeChild(computedStyleNode);
@@ -191,6 +172,74 @@ function CollectionRepeatDirective($ionicCollectionManager, $parse, $window, $$r
       repeatManager && repeatManager.destroy();
       repeatManager = null;
     });
+
+    function getRepeatManager() {
+      return repeatManager || (repeatManager = new $ionicCollectionManager({
+        afterItemsNode: afterItemsContainer[0],
+        containerNode: containerNode,
+        heightData: heightData,
+        widthData: widthData,
+        forceRefreshImages: !!(isDefined(attr.forceRefreshImages) && attr.forceRefreshImages !== 'false'),
+        keyExpression: keyExpr,
+        renderBuffer: renderBuffer,
+        scope: scope,
+        scrollView: scrollCtrl.scrollView,
+        transclude: transclude,
+      }));
+    }
+
+    function initAfterItemsContainer() {
+      var container = angular.element(
+        scrollView.__content.querySelector('.collection-repeat-after-container')
+      );
+      // Put everything in the view after the repeater into a container.
+      if (!container.length) {
+        var elementIsAfterRepeater = false;
+        var afterNodes = [].filter.call(scrollView.__content.childNodes, function(node) {
+          if (ionic.DomUtil.contains(node, containerNode)) {
+            elementIsAfterRepeater = true;
+            return false;
+          }
+          return elementIsAfterRepeater;
+        });
+        container = angular.element('<span class="collection-repeat-after-container">');
+        if (scrollView.options.scrollingX) {
+          container.addClass('horizontal');
+        }
+        container.append(afterNodes);
+        scrollView.__content.appendChild(container[0]);
+      }
+      return container;
+    }
+
+    function initDimensions() {
+      //Height and width have four 'modes':
+      //1) Computed Mode
+      //  - Nothing is supplied, so we getComputedStyle() on one element in the list and use
+      //    that width and height value for the width and height of every item. This is re-computed
+      //    every resize.
+      //2) Constant Mode, Static Integer
+      //  - The user provides a constant number for width or height, in pixels. We parse it,
+      //    store it on the `value` field, and it never changes
+      //3) Constant Mode, Percent
+      //  - The user provides a percent string for width or height. The getter for percent is
+      //    stored on the `getValue()` field, and is re-evaluated once every resize. The result
+      //    is stored on the `value` field.
+      //4) Dynamic Mode
+      //  - The user provides a dynamic expression for the width or height.  This is re-evaluated
+      //    for every item, stored on the `.getValue()` field.
+      if (!heightExpr && !widthExpr) {
+        heightData.computed = widthData.computed = true;
+      } else {
+        if (heightExpr) {
+          parseDimensionAttr(heightExpr, heightData);
+        } else {
+          heightData.computed = true;
+        }
+        if (!widthExpr) widthExpr = '"100%"';
+        parseDimensionAttr(widthExpr, widthData);
+      }
+    }
 
     // Make sure this resize actually changed the size of the screen
     function validateResize() {
@@ -202,6 +251,8 @@ function CollectionRepeatDirective($ionicCollectionManager, $parse, $window, $$r
       }
     }
     function refreshDimensions() {
+      if (!data.length) return;
+
       if (heightData.computed || widthData.computed) {
         computeStyleDimensions();
       }
@@ -209,8 +260,8 @@ function CollectionRepeatDirective($ionicCollectionManager, $parse, $window, $$r
       if (heightData.computed) {
         heightData.value = computedStyleDimensions.height;
         if (!heightData.value) {
-          throw new Error('collection-repeat tried to compute the height of elements "' +
-            listExpr + '", but was unable to. Please provide the "item-height" attribute. ' +
+          throw new Error('collection-repeat tried to compute the height of repeated elements "' +
+            repeatExpr + '", but was unable to. Please provide the "item-height" attribute. ' +
             'http://ionicframework.com/docs/api/directive/collectionRepeat/');
         }
       } else if (!heightData.dynamic && heightData.getValue) {
@@ -220,8 +271,8 @@ function CollectionRepeatDirective($ionicCollectionManager, $parse, $window, $$r
       if (widthData.computed) {
         widthData.value = computedStyleDimensions.width;
         if (!widthData.value) {
-          throw new Error('collection-repeat tried to compute the width of elements in "' +
-            listExpr + '", but was unable to. Please provide the "item-width" attribute. ' +
+          throw new Error('collection-repeat tried to compute the width of repeated elements "' +
+            repeatExpr + '", but was unable to. Please provide the "item-width" attribute. ' +
             'http://ionicframework.com/docs/api/directive/collectionRepeat/');
         }
       } else if (!widthData.dynamic && widthData.getValue) {
@@ -231,22 +282,7 @@ function CollectionRepeatDirective($ionicCollectionManager, $parse, $window, $$r
       // Dynamic dimensions aren't updated on resize. Since they're already dynamic anyway,
       // .getValue() will be used.
 
-      if (!repeatManager) {
-        repeatManager = new $ionicCollectionManager({
-          afterItemsNode: afterItemsContainer[0],
-          containerNode: containerNode,
-          heightData: heightData,
-          widthData: widthData,
-          forceRefreshImages: !!(isDefined(attr.forceRefreshImages) && attr.forceRefreshImages !== 'false'),
-          keyExpression: keyExpr,
-          listExpression: listExpr,
-          renderBuffer: renderBuffer,
-          scope: scope,
-          scrollView: scrollCtrl.scrollView,
-          transclude: transclude,
-        });
-      }
-      repeatManager.refreshLayout();
+      getRepeatManager().refreshLayout();
     }
 
     function parseDimensionAttr(attrValue, dimensionData) {
@@ -267,7 +303,7 @@ function CollectionRepeatDirective($ionicCollectionManager, $parse, $window, $$r
 
       var withoutQuotes = attrValue.replace(/(\'|\"|px|%)/g, '').trim();
       var isConstant = withoutQuotes.length && !/([a-zA-Z]|\$|:|\?)/.test(withoutQuotes);
-      dimensionData.attrValue = attrValue;;
+      dimensionData.attrValue = attrValue;
 
       // If it's a constant, it's either a percent or just a constant pixel number.
       if (isConstant) {
@@ -311,7 +347,9 @@ function CollectionRepeatDirective($ionicCollectionManager, $parse, $window, $$r
           computedStyleNode = clone[0];
         });
       }
-      computedStyleScope[keyExpr] = ($parse(listExpr)(scope) || [])[0];
+
+      computedStyleScope[keyExpr] = (listGetter(scope) || [])[0];
+      if (!$rootScope.$$phase) computedStyleScope.$digest();
       containerNode.appendChild(computedStyleNode);
 
       var style = $window.getComputedStyle(computedStyleNode);
@@ -336,7 +374,6 @@ function RepeatManagerFactory($rootScope, $window, $$rAF) {
     var heightData = options.heightData;
     var widthData = options.widthData;
     var keyExpression = options.keyExpression;
-    var listExpression = options.listExpression;
     var renderBuffer = options.renderBuffer;
     var scope = options.scope;
     var scrollView = options.scrollView;
@@ -395,6 +432,10 @@ function RepeatManagerFactory($rootScope, $window, $$rAF) {
     var nextItemId = 0;
     var estimatedItemsAcross;
 
+    var scrollViewSetDimensions = isVertical ?
+      function() { scrollView.setDimensions(null, null, null, view.getContentSize(), true); } :
+      function() { scrollView.setDimensions(null, null, view.getContentSize(), null, true); };
+
     // view is a mix of list/grid methods + static/dynamic methods.
     // See bottom for implementations. Available methods:
     //
@@ -405,84 +446,9 @@ function RepeatManagerFactory($rootScope, $window, $$rAF) {
     (isGridView ? GridViewType : ListViewType).call(view);
     (isStaticView ? StaticViewType : DynamicViewType).call(view);
 
-    var isLayoutReady = false;
-    var isDataReady = false;
-    this.refreshLayout = function(itemsAfterRepeater) {
-      estimatedHeight = heightGetter(0, data[0]);
-      estimatedWidth = widthGetter(0, data[0]);
-
-      // Get the size of every element AFTER the repeater. We have to get the margin before and
-      // after the first/last element to fix a browser bug with getComputedStyle() not counting
-      // the first/last child's margins into height.
-      var style = getComputedStyle(afterItemsNode);
-      var firstStyle = getComputedStyle(afterItemsNode.firstElementChild);
-      var lastStyle = getComputedStyle(afterItemsNode.lastElementChild);
-      repeaterAfterSize = (parseInt(style[isVertical ? 'height' : 'width']) || 0) +
-        (firstStyle && parseInt(firstStyle[isVertical ? 'marginTop' : 'marginLeft']) || 0) +
-        (lastStyle && parseInt(lastStyle[isVertical ? 'marginBottom' : 'marginRight']) || 0);
-
-      // Get the offsetTop of the repeater.
-      repeaterBeforeSize = 0;
-      var current = containerNode;
-      do {
-        repeaterBeforeSize += current[isVertical ? 'offsetTop' : 'offsetLeft'];
-      } while ( scrollView.__content.contains(current = current.offsetParent) );
-
-      (view.onRefreshLayout || angular.noop)();
-      view.refreshDirection();
-
-      // Create the pool of items for reuse, setting the size to (estimatedItemsOnScreen) * 2,
-      // plus the size of the renderBuffer.
-      if (!isLayoutReady) {
-        var poolSize = 2 * view.scrollPrimarySize /
-          view.estimatedPrimarySize * view.estimatedItemsAcross + (renderBuffer * 2);
-        for (var i = 0; i < poolSize; i++) {
-          itemsPool.push(new RepeatItem());
-        }
-      }
-
-      isLayoutReady = true;
-      if (isLayoutReady && isDataReady) {
-        forceRerender();
-      }
-    };
-
-    this.refreshData = function(newData) {
-      newData || (newData = []);
-
-      if (!angular.isArray(newData)) {
-        throw new Error("collection-repeat expected an array for '" + listExpression + "', " +
-          "but got a " + typeof value);
-      }
-
-      data = newData;
-      (view.onRefreshData || angular.noop)();
-
-      isDataReady = true;
-      if (isLayoutReady && isDataReady) {
-        forceRerender();
-        setTimeout(angular.bind(scrollView, scrollView.resize));
-      }
-    };
-
-    var unwatch = scope.$watchCollection(listExpression, angular.bind(this, this.refreshData));
-    this.destroy = function() {
-      render.destroyed = true;
-      unwatch();
-
-      scrollView.__calback = scrollView.__$callback;
-      itemsPool.forEach(function(item) {
-        item.scope.$destroy();
-        item.scope = item.element = item.node = item.images = null;
-      });
-      itemsPool.length = itemsEntering.length = itemsLeaving.length = 0;
-      itemsShownMap = {};
-
-      (view.onDestroy || angular.noop)();
-    };
-
-    scrollView.options[isVertical ? 'getContentHeight' : 'getContentWidth'] =
-      angular.bind(view, view.getContentSize);
+    var contentSizeStr = isVertical ? 'getContentHeight' : 'getContentWidth';
+    var originalGetContentSize = scrollView.options[contentSizeStr];
+    scrollView.options[contentSizeStr] = angular.bind(view, view.getContentSize);
 
     scrollView.__$callback = scrollView.__callback;
     scrollView.__callback = function(transformLeft, transformTop, zoom, wasResize) {
@@ -495,6 +461,82 @@ function RepeatManagerFactory($rootScope, $window, $$rAF) {
       scrollView.__$callback(transformLeft, transformTop, zoom, wasResize);
     };
 
+    var isLayoutReady = false;
+    var isDataReady = false;
+    this.refreshLayout = function(itemsAfterRepeater) {
+      estimatedHeight = heightGetter(0, data[0]);
+      estimatedWidth = widthGetter(0, data[0]);
+
+      // Get the size of every element AFTER the repeater. We have to get the margin before and
+      // after the first/last element to fix a browser bug with getComputedStyle() not counting
+      // the first/last child's margins into height.
+      var style = getComputedStyle(afterItemsNode) || {};
+      var firstStyle = afterItemsNode.firstElementChild && getComputedStyle(afterItemsNode.firstElementChild) || {};
+      var lastStyle = afterItemsNode.lastElementChild && getComputedStyle(afterItemsNode.lastElementChild) || {};
+      repeaterAfterSize = (parseInt(style[isVertical ? 'height' : 'width']) || 0) +
+        (firstStyle && parseInt(firstStyle[isVertical ? 'marginTop' : 'marginLeft']) || 0) +
+        (lastStyle && parseInt(lastStyle[isVertical ? 'marginBottom' : 'marginRight']) || 0);
+
+      // Get the offsetTop of the repeater.
+      repeaterBeforeSize = 0;
+      var current = containerNode;
+      do {
+        repeaterBeforeSize += current[isVertical ? 'offsetTop' : 'offsetLeft'];
+      } while( ionic.DomUtil.contains(scrollView.__content, current = current.offsetParent) );
+
+      if (!scrollView.__clientHeight || !scrollView.__clientWidth) {
+        scrollView.__clientWidth = scrollView.__container.clientWidth;
+        scrollView.__clientHeight = scrollView.__container.clientHeight;
+      }
+
+      (view.onRefreshLayout || angular.noop)();
+      view.refreshDirection();
+      scrollViewSetDimensions();
+
+      // Create the pool of items for reuse, setting the size to (estimatedItemsOnScreen) * 2,
+      // plus the size of the renderBuffer.
+      if (!isLayoutReady) {
+        var poolSize = Math.max(20, renderBuffer * 3);
+        for (var i = 0; i < poolSize; i++) {
+          itemsPool.push(new RepeatItem());
+        }
+      }
+
+      isLayoutReady = true;
+      if (isLayoutReady && isDataReady) {
+        // If the resize or latest data change caused the scrollValue to
+        // now be out of bounds, resize the scrollView.
+        if (scrollView.__scrollLeft > scrollView.__maxScrollLeft ||
+            scrollView.__scrollTop > scrollView.__maxScrollTop) {
+          scrollView.resize();
+        }
+        forceRerender(true);
+      }
+    };
+
+    this.refreshData = function(newData) {
+      data = newData;
+      (view.onRefreshData || angular.noop)();
+      isDataReady = true;
+    };
+
+    this.destroy = function() {
+      render.destroyed = true;
+
+      itemsPool.forEach(function(item) {
+        item.scope.$destroy();
+        item.scope = item.element = item.node = item.images = null;
+      });
+      itemsPool.length = itemsEntering.length = itemsLeaving.length = 0;
+      itemsShownMap = {};
+
+      //Restore the scrollView's normal behavior and resize it to normal size.
+      scrollView.options[contentSizeStr] = originalGetContentSize;
+      scrollView.__callback = scrollView.__$callback;
+      scrollView.resize();
+
+      (view.onDestroy || angular.noop)();
+    };
 
     function forceRerender() {
       return render(true);
@@ -536,7 +578,7 @@ function RepeatManagerFactory($rootScope, $window, $$rAF) {
 
         item = itemsShownMap[i] || (itemsShownMap[i] = itemsLeaving.length ? itemsLeaving.pop() :
                                     itemsPool.length ? itemsPool.shift() :
-                                    new RepeatItem())
+                                    new RepeatItem());
         itemsEntering.push(item);
         item.isShown = true;
 
@@ -559,7 +601,7 @@ function RepeatManagerFactory($rootScope, $window, $$rAF) {
         if (item.secondarySize !== dim.secondarySize || item.primarySize !== dim.primarySize) {
           item.node.style.cssText = item.node.style.cssText
             .replace(WIDTH_HEIGHT_REGEX, WIDTH_HEIGHT_TEMPLATE_STR
-              .replace(PRIMARY, 1 + (item.primarySize = dim.primarySize))
+              .replace(PRIMARY, (item.primarySize = dim.primarySize) + 1)
               .replace(SECONDARY, (item.secondarySize = dim.secondarySize))
             );
         }
@@ -753,13 +795,6 @@ function RepeatManagerFactory($rootScope, $window, $$rAF) {
 
     function DynamicViewType() {
       var self = this;
-      var scrollViewSetDimensions = isVertical ?
-        function() {
-          scrollView.setDimensions(null, null, null, self.getContentSize(), true);
-        } :
-        function() {
-          scrollView.setDimensions(null, null, self.getContentSize(), null, true);
-        };
       var debouncedScrollViewSetDimensions = ionic.debounce(scrollViewSetDimensions, 25, true);
       var calculateDimensions = isGridView ? calculateDimensionsGrid : calculateDimensionsList;
       var dimensionsIndex;

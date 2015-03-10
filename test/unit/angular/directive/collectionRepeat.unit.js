@@ -14,6 +14,7 @@ describe('collectionRepeat', function() {
   }));
 
   var scrollView;
+  var repeaterScope;
   function setup(listData, attrs, scrollViewData) {
     var content = angular.element('<content>')
     scrollView = angular.extend({
@@ -47,6 +48,7 @@ describe('collectionRepeat', function() {
 
     var element;
     inject(function($compile, $rootScope) {
+      repeaterScope = $rootScope.$new();
       attrs = attrs || '';
       if (!/item-height/.test(attrs)) attrs += ' item-height="25px"';
       if (!/item-render-buffer/.test(attrs)) attrs += ' item-render-buffer="0"';
@@ -56,13 +58,16 @@ describe('collectionRepeat', function() {
       content.append(element);
       content.data('$$ionicScrollController', scrollCtrl);
       $rootScope.list = list;
-      $compile(element)($rootScope);
-      $rootScope.$apply();
-      content.triggerHandler('scroll.init');
+      $compile(element)(repeaterScope);
       $rootScope.$apply();
     });
     return element;
   }
+
+  afterEach(function() {
+    repeaterScope && repeaterScope.$destroy();
+    repeaterScope = null;
+  });
 
   function scrollTo(n) {
     if (scrollView.options.scrollingY) {
@@ -89,21 +94,25 @@ describe('collectionRepeat', function() {
     var items = getItems().filter(function(item) {
       return item.isShown;
     });
-    //Group items by their primary position, sort those groups by secondary position,
-    //then concat them all together.
+    //1. Group items by their primary position (row),
+    //2. Sort those groups by secondary position (column),
+    //3. Concat them all together.
     var activeItems = {};
-    var result = [];
     items.forEach(function(item) {
       (activeItems[item.primaryPos] || (activeItems[item.primaryPos] = [])).push(item);
     });
-    for (var primaryPos in activeItems) {
-      activeItems[primaryPos] = activeItems[primaryPos].sort(function(a,b) {
-        return a.secondaryPos > b.secondaryPos ? 1 : -1;
+
+    var result = [];
+    Object.keys(activeItems)
+      .sort(function(pos1, pos2) {
+        return (+pos1) > (+pos2) ? 1 : -1;
+      })
+      .forEach(function(primaryPos) {
+        var sortedRow = activeItems[primaryPos].sort(function(a,b) {
+          return a.secondaryPos > b.secondaryPos ? 1 : -1;
+        });
+        result = result.concat(sortedRow);
       });
-    }
-    for (var primaryPos in activeItems) {
-      result = result.concat(activeItems[primaryPos]);
-    }
     return result;
   }
   function activeItemContents() {
@@ -145,19 +154,75 @@ describe('collectionRepeat', function() {
     }).toThrow();
   }));
 
-
-  it('should destroy', inject(function($compile, $rootScope) {
+  it('should destroy and restore normal scrollView behavior', inject(function($compile, $rootScope) {
     var scope = $rootScope.$new();
-    var content = $compile('<ion-content>' +
-             '<div collection-repeat="item in items" item-height="5" item-width="5"></div>' +
-             '</ion-content>')(scope);
+    var content = $compile('<ion-content>')(scope);
+    var scrollView = content.data('$$ionicScrollController').scrollView;
+
+    var originalCallback = scrollView.__callback;
+    var originalGetContentHeight = scrollView.options.getContentHeight;
+
+    var repeater = angular.element(
+      '<div collection-repeat="item in items" item-height="5" item-width="5"></div>'
+    );
+    content.append(repeater);
+    $compile(repeater)(content.scope());
     $rootScope.$apply();
     content.triggerHandler('scroll.init');
+    $rootScope.$apply();
+
+    expect(scrollView.__callback).not.toBe(originalCallback);
+    expect(scrollView.options.getContentHeight).not.toBe(originalGetContentHeight);
+
     scope.$destroy();
+
+    expect(scrollView.__callback).toBe(originalCallback);
+    expect(scrollView.options.getContentHeight).toBe(originalGetContentHeight);
   }));
 
+  describe('automatic dimensions', function() {
+    it('should use computed width/height', inject(function($window) {
+      spyOn($window, 'getComputedStyle').andReturn({
+        height: '50px',
+        width: '50px'
+      });
+      setup(5, 'item-height="" item-width=""', {
+        __clientHeight: 75,
+        __clientWidth: 100
+      });
+
+      expect(activeItems().length).toBe(4);
+      expect(activeItemDimensions()).toEqual([
+        'x:0,y:0,w:50,h:50',
+        'x:50,y:0,w:50,h:50',
+        'x:0,y:50,w:50,h:50',
+        'x:50,y:50,w:50,h:50'
+      ]);
+    }));
+
+    it('should error if computed height is 0', inject(function($window) {
+      spyOn($window, 'getComputedStyle').andReturn({
+        height: '0px',
+        width: '100px'
+      });
+      expect(function() {
+        setup(5, 'item-height="" item-width=""');
+      }).toThrow();
+    }));
+
+    it('should error if computed width is 0', inject(function($window) {
+      spyOn($window, 'getComputedStyle').andReturn({
+        height: '100px',
+        width: '0px'
+      });
+      expect(function() {
+        setup(5, 'item-height="" item-width=""');
+      }).toThrow();
+    }));
+  });
+
   describe('horizontal static list', function() {
-    beforeEach(function() {
+    function setupHorizontal() {
       setup(10, 'item-height="100%" item-width="30"', {
         options: {
           scrollingX: true,
@@ -166,12 +231,14 @@ describe('collectionRepeat', function() {
         __clientWidth: 80,
         __clientHeight: 25
       });
-    });
+    }
     it('should show initial screen of items', function() {
+      setupHorizontal();
       expect(activeItems().length).toBe(3);
       expect(activeItemContents()).toEqual(['0','1','2'])
     });
     it('should switch out as you scroll', function() {
+      setupHorizontal();
       expect(activeItems().length).toBe(3);
       expect(activeItemContents()).toEqual(['0','1','2'])
       expect(activeItemIds()).toEqual(['item0','item1','item2']);
@@ -189,6 +256,7 @@ describe('collectionRepeat', function() {
       expect(activeItemIds()).toEqual(['item2','item0','item1']);
     });
     it('should start with the same items when resizing', inject(function($window) {
+      setupHorizontal();
       scrollTo(31);
       scrollTo(61);
 
