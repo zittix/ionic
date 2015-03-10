@@ -49,7 +49,8 @@ describe('ionicInfiniteScroll directive', function() {
     inject(function($rootScope, $compile, $document) {
       var scope = $rootScope.$new();
       angular.extend(scope, scopeProps || {});
-      parent = angular.element('<ion-content class="overflow-scroll"><ion-infinite-scroll ' + (attrs || '') +
+      parent = angular.element('<ion-content class="overflow-scroll" overflow-scroll="true">' +
+                               '<ion-infinite-scroll ' + (attrs || '') +
                                '></ion-infinite-scroll></ion-content>');
       if (options && !!options.scrollingX) parent[0].style['overflow-x'] ='scroll';
       if (options && !!options.scrollingY) parent[0].style['overflow-y'] ='scroll';
@@ -59,6 +60,7 @@ describe('ionicInfiniteScroll directive', function() {
       element = parent.find('ion-infinite-scroll');
       ionic.requestAnimationFrame = function() {};
       ctrl = element.controller('ionInfiniteScroll');
+
       // create a fake scrollEl since they can't be faked if we're passing in scroll data
       if (options) {
         ctrl.scrollEl = {style:{
@@ -98,14 +100,13 @@ describe('ionicInfiniteScroll directive', function() {
     expect(ctrl.isLoading).toBe(false);
   });
 
-  iit('should unbind scroll event on destroy', function() {
+  it('should unbind scroll event on destroy', function() {
     var el = setupJS();
     spyOn(el.controller('$ionicScroll').$element, 'off');
     el.scope().$destroy();
     expect(el.controller('$ionicScroll').$element.off).toHaveBeenCalledWith('scroll', jasmine.any(Function));
 
     el = setupNative();
-    console.debug(ctrl.scrollEl);
     spyOn(ctrl.scrollEl, 'removeEventListener');
     el.scope().$destroy();
     expect(ctrl.scrollEl.removeEventListener).toHaveBeenCalled();
