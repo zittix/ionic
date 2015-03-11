@@ -101,11 +101,22 @@
      * @return {Map} `left` and `top` scroll position and `zoom` level
      */
     getValues: function() {
+      var self = this;
+      self.update();
       return {
-        left: this.__scrollLeft,
-        top: this.__scrollTop,
+        left: self.__scrollLeft,
+        top: self.__scrollTop,
         zoom: 1
       };
+    },
+
+    /**
+     * Updates the __scrollLeft and __scrollTop values to el's current value
+     */
+    update: function() {
+      var self = this;
+      self.__scrollLeft = self.el.scrollLeft;
+      self.__scrollTop = self.el.scrollTop;
     },
 
     /**
@@ -198,6 +209,9 @@
 
     scrollBy: function(left, top, animate) {
       var self = this;
+
+      // update scroll vars before refferencing them
+      self.update();
 
       var startLeft = self.__isAnimating ? self.__scheduledLeft : self.__scrollLeft;
       var startTop = self.__isAnimating ? self.__scheduledTop : self.__scrollTop;
