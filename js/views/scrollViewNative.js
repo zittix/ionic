@@ -1,5 +1,8 @@
 (function(ionic) {
   var NOOP = function() {};
+  var depreciated = function(name){
+    console.error('Method depreciated in native scrolling: '+ name);
+  };
   ionic.views.ScrollNative = ionic.views.View.inherit({
 
     initialize: function(options) {
@@ -9,7 +12,6 @@
       self.__content = options.el.firstElementChild;
       self.isNative = true;
 
-      // TODO: turn in to methods
       self.__scrollTop = self.el.scrollTop;
       self.__scrollLeft = self.el.scrollLeft;
       self.__clientHeight = self.__content.clientHeight,
@@ -18,17 +20,6 @@
       self.__maxScrollLeft = Math.max((self.__contentWidth) - self.__clientWidth, 0),
 
       self.options = {
-
-        /** Disable scrolling on x-axis by default */
-        scrollingX: false,
-
-        /** Enable scrolling on y-axis */
-        scrollingY: true,
-
-        /** Bouncing (content can be slowly moved outside and jumps back after releasing) */
-        bouncing: ionic.Platform.isIOS(),
-
-        deceleration: null,
 
         freeze: false,
 
@@ -46,33 +37,36 @@
         self.options[key] = options[key];
       }
 
-      self.onScroll = function() {
-        // this is run every scroll event, so keep it light
+      /**
+       * Sets isScrolling to true, and automatically deactivates if not called again in 80ms.
+       */
+      self.onScroll = function(event) {
         if (!ionic.scroll.isScrolling) {
-          setTimeout(self.setScrollStart, 50);
-        } else {
-          clearTimeout(self.scrollTimer);
-          self.scrollTimer = setTimeout(function(){
-            ionic.scroll.isScrolling = false;
-          }, 80);
+          ionic.scroll.isScrolling = true;
         }
+
+        clearTimeout(self.scrollTimer);
+        self.scrollTimer = setTimeout(function() {
+          ionic.scroll.isScrolling = false;
+        }, 80);
       };
 
-      self.freeze = function(shouldFreeze) {
-        if (arguments.length) {
-          self.options.freeze = shouldFreeze;
-        }
-        return self.options.freeze;
-      };
+      self.freeze = NOOP;
 
+      self.__initEventHandlers();
     },
-    // Not Used in native scrolling, but called by other Ionic components
 
-    __callback: NOOP,
-    zoomTo: NOOP,
-    zoomBy: NOOP,
-    activatePullToRefresh: NOOP,
+    /**  Methods not used in native scrolling */
+    __callback: function() {depreciated('__callback');},
+    zoomTo: function() {depreciated('zoomTo');},
+    zoomBy: function() {depreciated('zoomBy');},
+    activatePullToRefresh: function() {depreciated('activatePullToRefresh');},
 
+    /**
+     * Returns the scroll position and zooming values
+     *
+     * @return {Map} `left` and `top` scroll position and `zoom` level
+     */
     resize: function(continueScrolling) {
       var self = this;
       if (!self.__container || !self.options) return;
@@ -88,10 +82,11 @@
       );
     },
 
-
-
+    /**
+     * Initialize the scrollview
+     * In native scrolling, this only means we need to gather size information
+     */
     run: function() {
-      // should be noop, but keeping this for future proofing
       this.resize();
     },
 
@@ -129,7 +124,7 @@
      * @param contentWidth {Integer} Outer width of inner element
      * @param contentHeight {Integer} Outer height of inner element
      */
-    setDimensions: function(clientWidth, clientHeight, contentWidth, contentHeight, continueScrolling) {
+    setDimensions: function(clientWidth, clientHeight, contentWidth, contentHeight) {
       var self = this;
 
       if (!clientWidth && !clientHeight && !contentWidth && !contentHeight) {
@@ -156,27 +151,6 @@
 
       // Refresh maximums
       self.__computeScrollMax();
-
-      // Refresh scroll position
-      if (!continueScrolling) {
-        self.scrollTo(self.__scrollLeft, self.__scrollTop, true, null, true);
-      }
-
-    },
-
-    /**
-     * Recomputes scroll minimum values based on client dimensions and content dimensions.
-     */
-    __computeScrollMax: function() {
-      var self = this;
-
-      self.__maxScrollLeft = Math.max((self.__contentWidth) - self.__clientWidth, 0);
-      self.__maxScrollTop = Math.max((self.__contentHeight) - self.__clientHeight, 0);
-
-      if (!self.__didWaitForSize && !self.__maxScrollLeft && !self.__maxScrollTop) {
-        self.__didWaitForSize = true;
-        self.__waitForSize();
-      }
     },
 
     /**
@@ -190,6 +164,49 @@
         top: this.__maxScrollTop
       };
     },
+
+    /**
+     * Scrolls by the given amount in px.
+     *
+     * @param left {Number} Horizontal scroll position, keeps current if value is <code>null</code>
+     * @param top {Number} Vertical scroll position, keeps current if value is <code>null</code>
+     * @param animate {Boolean} Whether the scrolling should happen using an animation
+     */
+
+    scrollBy: function(left, top, animate) {
+      var self = this;
+
+      // update scroll vars before refferencing them
+      self.update();
+
+      var startLeft = self.__isAnimating ? self.__scheduledLeft : self.__scrollLeft;
+      var startTop = self.__isAnimating ? self.__scheduledTop : self.__scrollTop;
+
+      self.scrollTo(startLeft + (left || 0), startTop + (top || 0), animate);
+    },
+
+    /**
+     * Scrolls to the given position in px.
+     *
+     * @param left {Number} Horizontal scroll position, keeps current if value is <code>null</code>
+     * @param top {Number} Vertical scroll position, keeps current if value is <code>null</code>
+     * @param animate {Boolean} Whether the scrolling should happen using an animation
+     */
+    scrollTo: function(left, top, animate) {
+      //TODO add animate functionality
+      var self = this;
+
+      self.el.scrollTop = top;
+      self.el.scrollLeft = left;
+    },
+
+
+
+    /*
+     ---------------------------------------------------------------------------
+     PRIVATE API
+     ---------------------------------------------------------------------------
+     */
 
     /**
      * If the scroll view isn't sized correctly on start, wait until we have at least some size
@@ -207,52 +224,19 @@
       self.__sizerTimeout = setTimeout(sizer, 500);
     },
 
-    scrollBy: function(left, top, animate) {
-      var self = this;
-
-      // update scroll vars before refferencing them
-      self.update();
-
-      var startLeft = self.__isAnimating ? self.__scheduledLeft : self.__scrollLeft;
-      var startTop = self.__isAnimating ? self.__scheduledTop : self.__scrollTop;
-
-      self.scrollTo(startLeft + (left || 0), startTop + (top || 0), animate);
-    },
 
     /**
-     * Scrolls to the given position. Respect limitations and snapping automatically.
-     *
-     * @param left {Number} Horizontal scroll position, keeps current if value is <code>null</code>
-     * @param top {Number} Vertical scroll position, keeps current if value is <code>null</code>
-     * @param animate {Boolean} Whether the scrolling should happen using an animation
+     * Recomputes scroll minimum values based on client dimensions and content dimensions.
      */
-    scrollTo: function(left, top, animate) {
-      //TODO add animate functionality
+    __computeScrollMax: function() {
       var self = this;
 
-      self.el.scrollTop = top;
-      self.el.scrollLeft = left;
-    },
+      self.__maxScrollLeft = Math.max((self.__contentWidth) - self.__clientWidth, 0);
+      self.__maxScrollTop = Math.max((self.__contentHeight) - self.__clientHeight, 0);
 
-    onScroll: function() {
-
-      if (!ionic.scroll.isScrolling) {
-        setTimeout(self.setScrollStart, 50);
-      } else {
-        clearTimeout(self.scrollTimer);
-        self.scrollTimer = setTimeout(self.setScrollStop, 80);
-      }
-
-    },
-
-    resetScrollView: function(e) {
-      //return scrollview to original height once keyboard has hidden
-      if (self.isScrolledIntoView) {
-        self.isScrolledIntoView = false;
-        container.style.height = "";
-        container.style.overflow = "";
-        self.resize();
-        ionic.scroll.isScrolling = false;
+      if (!self.__didWaitForSize && !self.__maxScrollLeft && !self.__maxScrollTop) {
+        self.__didWaitForSize = true;
+        self.__waitForSize();
       }
     },
 
@@ -262,8 +246,27 @@
       // Event Handler
       var container = self.__container;
 
+      // should be unnecessary in native scrolling, but keep in case bugs show up
+      self.scrollChildIntoView = NOOP;
+
+      self.resetScrollView = function(e) {
+        //return scrollview to original height once keyboard has hidden
+        if (self.isScrolledIntoView) {
+          self.isScrolledIntoView = false;
+          container.style.height = "";
+          container.style.overflow = "";
+          self.resize();
+          ionic.scroll.isScrolling = false;
+        }
+      };
+
       container.addEventListener('resetScrollView', self.resetScrollView);
       container.addEventListener('scroll', self.onScroll);
+
+      //Broadcasted when keyboard is shown on some platforms.
+      //See js/utils/keyboard.js
+      container.addEventListener('scrollChildIntoView', self.scrollChildIntoView);
+      container.addEventListener('resetScrollView', self.resetScrollView);
     },
 
     __cleanup: function() {
@@ -272,6 +275,9 @@
 
       container.removeEventListener('resetScrollView', self.resetScrollView);
       container.removeEventListener('scroll', self.onScroll);
+
+      container.removeEventListener('scrollChildIntoView', self.scrollChildIntoView);
+      container.removeEventListener('resetScrollView', self.resetScrollView);
 
       ionic.tap.removeClonedInputs(container, self);
 
