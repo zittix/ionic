@@ -32,7 +32,7 @@ function($scope,
 
   var element = self.element = scrollViewOptions.el;
   var $element = self.$element = jqLite(element);
-  var scrollView = null;
+  var scrollView;
   if (self.isNative()) {
     scrollView = self.scrollView = new ionic.views.ScrollNative(scrollViewOptions);
   } else {

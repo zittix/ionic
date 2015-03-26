@@ -1,13 +1,12 @@
 (function(ionic) {
   var NOOP = function() {};
-  var depreciated = function(name){
-    console.error('Method depreciated in native scrolling: '+ name);
+  var depreciated = function(name) {
+    console.error('Method not available in native scrolling: ' + name);
   };
   ionic.views.ScrollNative = ionic.views.View.inherit({
 
     initialize: function(options) {
       var self = this;
-
       self.__container = self.el = options.el;
       self.__content = options.el.firstElementChild;
       self.isNative = true;
@@ -193,7 +192,6 @@
      * @param animate {Boolean} Whether the scrolling should happen using an animation
      */
     scrollTo: function(left, top, animate) {
-      //TODO add animate functionality
       var self = this;
       if (!animate) {
         self.el.scrollTop = top;
