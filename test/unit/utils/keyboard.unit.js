@@ -77,30 +77,99 @@ Switching inputs fires focusOut on iOS, doesn't on Android
 */
 
 
-describe('Ionic Keyboard', function() {
-  var window;
-/*
-  beforeEach(inject(function($window) {
+ddescribe('Ionic Keyboard', function() {
+  var window, scope, compile;
+
+  beforeEach(module('ionic'));
+
+  beforeEach(inject(function($window, $rootScope, $compile) {
     window = $window;
-    window._setTimeout = window.setTimeout;
-    window.setTimeout = function(){};
-    _activeElement = null; // the element which has focus
     window.cordova = undefined;
     window.device = undefined;
+
+    scope = $rootScope;
+    compile = $compile;
+
     ionic.Platform.ua = '';
-    ionic.Platform.platforms = null;
+    ionic.Platform.platforms = [];
     ionic.Platform.setPlatform('');
-    ionic.Platform.setVersion('');
-    ionic.keyboard.isOpen = false;
-    ionic.keyboard.height = null;
+    ionic.Platform.setVersion('')
     ionic.Platform.isFullScreen = false;
-    ionic.keyboard.landscape = false;
+
+    ionic.keyboard.isOpen = false;
+    ionic.keyboard.isOpening = false;
+    ionic.keyboard.isClosing = false;
+    ionic.keyboard.height = 0;
+    ionic.keyboard.isLandscape = false;
   }));
 
-  afterEach(function(){
-    window.setTimeout = window._setTimeout;
+  it('keyboardWaitForResize should set ionic.keyboard.isOpen', function(){
+    ionic.keyboard.isOpen = false;
+
+    //so we don't have to wait as long
+    ionic.Platform.setPlatform("ios");
+
+    runs(function(){
+      keyboardWaitForResize(function(){}, true);
+    });
+
+    waitsFor(function(){
+      return ionic.keyboard.isOpen;
+    }, "isOpen should be true", 100);
+
+    runs(function(){
+      expect(ionic.keyboard.isOpen).toBe(true);
+      keyboardWaitForResize(function(){}, false);
+    });
+
+    waitsFor(function(){
+      return !ionic.keyboard.isOpen;
+    }, "isOpen should be false", 100);
+
+    runs(function(){
+      expect(ionic.keyboard.isOpen).toBe(false);
+    });
   });
 
+  /* window.innerHeight won't change on mobile Safari, user should be disabling ionic.keyboard */
+  it('keyboardWaitForResize should set ionic.keyboard.height to the difference in window.innerHeight if not using plugin', function(){
+    expect(keyboardHasPlugin()).toBe(false);
+    expect(ionic.keyboard.isOpen).toBe(false);
+    expect(ionic.keyboard.height).toEqual(0);
+
+    window.innerHeight = 567;
+
+    //so we don't have to wait as long
+    ionic.Platform.setPlatform("ios");
+
+    var flag;
+    runs(function(){
+      keyboardWaitForResize(function(){ flag = true }, false);
+    });
+
+    waitsFor(function(){
+      window.innerHeight = 267;
+      return flag;
+    }, "It should call the callback", 100);
+
+    runs(function(){
+      expect(ionic.keyboard.height).toEqual(300);
+    })
+  });
+
+  it('keyboardHide should reset the scroll view', function(){
+    var element = compile('<ion-content><input></ion-scroll>')(scope);
+    document.body.appendChild(element[0]);
+    scope.$apply();
+    var scrollView = element.controller('$ionicScroll').scrollView;
+    spyOn(scrollView, 'resetScrollView');
+    document.addEventListener('resetScrollView', scrollView.resetScrollView);
+    keyboardActiveElement = element.find('input')[0];
+    keyboardHide();
+    document.removeEventListener('resetScrollView', scrollView.resetScrollView);
+    expect(scrollView.resetScrollView).toHaveBeenCalled();
+  });
+/*
   it('Should keyboardShow', function(){
     var element = document.createElement('textarea');
     var elementTop = 100;
@@ -142,7 +211,7 @@ describe('Ionic Keyboard', function() {
     ionic.Platform.setPlatform('android');
     expect( ionic.Platform.isFullScreen ).toEqual(false);
 
-    keyboardViewportHeight = 480;
+    keyboardCurrentViewportHeight = 480;
     window.innerHeight = 280;
 
     expect( keyboardGetHeight() ).toEqual(200);
@@ -160,7 +229,7 @@ describe('Ionic Keyboard', function() {
 
   it('keyboardGetHeight() should = 206 if iOS and in landscape orientation', function(){
     ionic.Platform.setPlatform('iOS');
-    ionic.keyboard.landscape = true;
+    ionic.keyboard.isLandscape = true;
 
     expect( keyboardGetHeight() ).toEqual(206);
   });
@@ -226,6 +295,7 @@ describe('Ionic Keyboard', function() {
 
     expect( details.isElementUnderKeyboard ).toEqual(false);
   });
-  */
+*/
+
 
 });
